@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 _CALLABLE_KINDS = frozenset({"function", "method"})
 _DEFAULT_BATCH_SIZE = 40
+_DEFAULT_EXPLORE_CHARS = 6000
 _DEFAULT_SOURCE_CHARS = 3000
 _SEVERITIES: dict[str, Severity] = {member.value: member for member in Severity}
 _CONFIDENCES: dict[str, Confidence] = {member.value: member for member in Confidence}
@@ -50,6 +51,7 @@ class ShannonAnalyzerBase(AnalyzerBase):
         seen_ids: set[str] = set()
 
         for batch_index, batch in enumerate(batches, start=1):
+            allowed_node_ids = self._batch_node_ids(batch)
             response = ctx["llm"].complete(
                 system=system,
                 prompt=self._build_prompt(ctx, batch, batch_index, len(batches)),
@@ -66,7 +68,12 @@ class ShannonAnalyzerBase(AnalyzerBase):
                 if not isinstance(raw_finding, dict):
                     logger.warning("Discarding %s finding batch %d item %d", self.name, batch_index, item_index)
                     continue
-                finding = self._convert_finding(cast(dict[str, Any], raw_finding), ctx["graph"], item_index)
+                finding = self._convert_finding(
+                    cast(dict[str, Any], raw_finding),
+                    ctx["graph"],
+                    item_index,
+                    allowed_node_ids,
+                )
                 if finding is not None and finding["id"] not in seen_ids:
                     seen_ids.add(finding["id"])
                     findings.append(finding)
@@ -78,6 +85,7 @@ class ShannonAnalyzerBase(AnalyzerBase):
 
     def _collect_candidates(self, ctx: AnalysisContext) -> list[dict[str, Any]]:
         settings = self._settings(ctx["config"])
+        explore_chars = self._positive_int(settings.get("explore_chars"), _DEFAULT_EXPLORE_CHARS)
         source_chars = self._positive_int(settings.get("source_chars"), _DEFAULT_SOURCE_CHARS)
         focus = ctx["config"].get("focus")
         avoid = ctx["config"].get("avoid")
@@ -94,9 +102,10 @@ class ShannonAnalyzerBase(AnalyzerBase):
                 continue
             details = ctx["graph"].node(node_id) or node
             candidate = self._graph_summary(details)
-            candidate["callers"] = [self._neighbor_summary(item) for item in ctx["graph"].callers(node_id)]
-            candidate["callees"] = [self._neighbor_summary(item) for item in ctx["graph"].callees(node_id)]
+            candidate["callers"] = self._scoped_neighbors(ctx["graph"].callers(node_id), focus, avoid)
+            candidate["callees"] = self._scoped_neighbors(ctx["graph"].callees(node_id), focus, avoid)
             candidate["source_excerpt"] = self._source_excerpt(ctx, details, source_chars)
+            candidate["exploration"] = self._exploration(ctx, details, explore_chars, focus, avoid)
             candidates.append(candidate)
         return candidates
 
@@ -145,7 +154,13 @@ class ShannonAnalyzerBase(AnalyzerBase):
             return None
         return cast(dict[str, Any], decoded)
 
-    def _convert_finding(self, raw: dict[str, Any], graph: GraphHandle, index: int) -> Finding | None:
+    def _convert_finding(
+        self,
+        raw: dict[str, Any],
+        graph: GraphHandle,
+        index: int,
+        allowed_node_ids: set[str],
+    ) -> Finding | None:
         title = self._required_string(raw.get("title"))
         rationale = self._required_string(raw.get("rationale"))
         evidence = self._required_string(raw.get("evidence"))
@@ -164,7 +179,12 @@ class ShannonAnalyzerBase(AnalyzerBase):
         for raw_location in raw_locations:
             if not isinstance(raw_location, dict):
                 return None
-            location = self._validated_location(cast(dict[str, Any], raw_location), graph, index)
+            location = self._validated_location(
+                cast(dict[str, Any], raw_location),
+                graph,
+                index,
+                allowed_node_ids,
+            )
             if location is None:
                 return None
             locations.append(location)
@@ -182,9 +202,18 @@ class ShannonAnalyzerBase(AnalyzerBase):
             remediation=cast(str, remediation),
         )
 
-    def _validated_location(self, raw: dict[str, Any], graph: GraphHandle, index: int) -> CodeLocation | None:
+    def _validated_location(
+        self,
+        raw: dict[str, Any],
+        graph: GraphHandle,
+        index: int,
+        allowed_node_ids: set[str],
+    ) -> CodeLocation | None:
         node_id = raw.get("node_id")
         if not isinstance(node_id, str) or not node_id:
+            return None
+        if node_id not in allowed_node_ids:
+            logger.warning("Discarding %s finding %d: node_id %r is outside the scan batch", self.name, index, node_id)
             return None
         node = graph.node(node_id)
         if node is None:
@@ -194,16 +223,35 @@ class ShannonAnalyzerBase(AnalyzerBase):
         if not isinstance(file_path, str) or not file_path:
             return None
         start_line, end_line = node.get("start_line"), node.get("end_line")
-        line = raw.get("line")
-        if not isinstance(line, int) or line <= 0:
-            line = start_line
-        if not isinstance(line, int) or line <= 0:
+        if not self._is_line(start_line):
+            logger.warning("Discarding %s finding %d: node %r has no valid start_line", self.name, index, node_id)
             return None
-        if isinstance(start_line, int) and isinstance(end_line, int) and not start_line <= line <= end_line:
-            line = start_line
-        elif isinstance(start_line, int) and not isinstance(end_line, int):
-            line = start_line
+        anchored_start = cast(int, start_line)
+        raw_line = raw.get("line")
+        line = cast(int, raw_line) if self._is_line(raw_line) else anchored_start
+        if self._is_line(end_line) and not anchored_start <= line <= cast(int, end_line):
+            line = anchored_start
+        elif not self._is_line(end_line):
+            line = anchored_start
         return {"file": file_path, "line": line, "node_id": node_id}
+
+    def _exploration(
+        self,
+        ctx: AnalysisContext,
+        node: dict[str, Any],
+        limit: int,
+        focus: Any,
+        avoid: Any,
+    ) -> str:
+        if self._scope_values(focus) or self._scope_values(avoid):
+            return ""
+        query = node.get("qualified_name") or node.get("name") or node.get("id")
+        if not isinstance(query, str) or not query:
+            return ""
+        try:
+            return ctx["graph"].explore(query)[:limit]
+        except (OSError, RuntimeError):
+            return ""
 
     def _source_excerpt(self, ctx: AnalysisContext, node: dict[str, Any], limit: int) -> str:
         file_path = node.get("file_path")
@@ -225,6 +273,28 @@ class ShannonAnalyzerBase(AnalyzerBase):
     def _neighbor_summary(node: dict[str, Any]) -> dict[str, Any]:
         keys = ("id", "kind", "name", "qualified_name", "file_path", "start_line")
         return {key: node[key] for key in keys if key in node and node[key] is not None}
+
+    @classmethod
+    def _scoped_neighbors(cls, nodes: list[dict[str, Any]], focus: Any, avoid: Any) -> list[dict[str, Any]]:
+        return [
+            cls._neighbor_summary(node) for node in nodes if cls._in_scope(str(node.get("file_path", "")), focus, avoid)
+        ]
+
+    @staticmethod
+    def _batch_node_ids(batch: list[dict[str, Any]]) -> set[str]:
+        node_ids: set[str] = set()
+        for candidate in batch:
+            candidate_id = candidate.get("id")
+            if isinstance(candidate_id, str):
+                node_ids.add(candidate_id)
+            for relation in ("callers", "callees"):
+                neighbors = candidate.get(relation, [])
+                if not isinstance(neighbors, list):
+                    continue
+                for neighbor in neighbors:
+                    if isinstance(neighbor, dict) and isinstance(neighbor.get("id"), str):
+                        node_ids.add(cast(str, neighbor["id"]))
+        return node_ids
 
     @staticmethod
     def _required_string(value: Any) -> str | None:
@@ -253,6 +323,10 @@ class ShannonAnalyzerBase(AnalyzerBase):
     @staticmethod
     def _positive_int(value: Any, default: int) -> int:
         return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else default
+
+    @staticmethod
+    def _is_line(value: Any) -> bool:
+        return isinstance(value, int) and not isinstance(value, bool) and value > 0
 
     @staticmethod
     def _scope_values(value: Any) -> list[str]:

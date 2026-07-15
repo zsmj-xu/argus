@@ -30,4 +30,4 @@ def test_injection_bad_node_is_discarded() -> None:
 
 def test_registry_discovers_all_t08_analyzers() -> None:
     registry = discover_analyzers()
-    assert {"injection", "xss", "auth", "ssrf"} <= registry.keys()
+    assert {"authz", "injection", "xss", "auth", "ssrf"} <= registry.keys()
