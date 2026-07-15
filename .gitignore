@@ -10,3 +10,6 @@ runs/
 
 # Env
 .env
+
+# Python packaging
+*.egg-info/
