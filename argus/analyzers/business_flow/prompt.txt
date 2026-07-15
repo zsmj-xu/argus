@@ -44,7 +44,7 @@ codegraph 骨架是权威事实,但它 **只有通用调用图,没有路由/资�
   ],
   "business_flows": [
     {
-      "endpoint_id": "ep-...",
+      "endpoint_id": "ep-...(必须是上面 endpoints 段里真实建过的 id;悬空引用会被整条丢弃)",
       "intent": "一句话说明这条请求的业务意图(它想为谁完成什么)",
       "preconditions": ["进入危险操作前本应成立的前置状态,逐条列"],
       "trust_boundaries": [
@@ -55,9 +55,15 @@ codegraph 骨架是权威事实,但它 **只有通用调用图,没有路由/资�
       ],
 
       "// 以下为可选扩展字段": "用于表达跨 handler 的业务逻辑漏洞;无从判断就省略(下游按空 list 处理)",
-      "related_endpoint_ids": ["同一业务流程的前后步骤端点 id,如下单->支付->退款"],
+      "related_endpoint_ids": ["同一业务流程的前后步骤端点 id,如下单->支付->退款;必须是上面 endpoints 里真实存在的 id"],
       "actors": ["谁可发起该流程,如 buyer / seller / admin / anonymous"],
-      "authorization_requirements": ["执行前应满足的授权/归属约束,如「必须是订单所有者」「需 admin 角色」"],
+      "authorization_requirements": ["执行前应满足的授权/归属约束(仅陈述「要求」),如「必须是订单所有者」「需 admin 角色」"],
+      "authorization_checks": [
+        {"requirement": "该处应满足的授权/归属约束,如「coupon belongs to current user」",
+         "enforced": false,
+         "enforced_by": "若真校验了,由谁校验,如 require_login 装饰器 / check_owner();未校验则 null",
+         "note": "enforced=false 时点明该要求代码根本没校验、可被如何绕过"}
+      ],
       "state_reads": ["该流程读取的持久化/会话状态,如 order.status / coupon.used"],
       "state_writes": ["该流程写入/变更的状态,如 order.status / wallet.balance"],
       "state_transitions": [
@@ -90,7 +96,13 @@ codegraph 骨架是权威事实,但它 **只有通用调用图,没有路由/资�
    - 跨 handler 扩展字段(可选,但对发现「退款重放/优惠券跨用户/跨步骤状态绕过」类
      漏洞至关重要,能填就填):
      · related_endpoint_ids:借 `call_edges` 与业务语义,串出同一流程的前后步骤端点。
-     · actors / authorization_requirements:谁能发起、需满足什么归属或角色约束。
+       **只能引用你上面 endpoints 段里真实建过的 id**;悬空/编造的 id 会被下游丢弃。
+     · actors / authorization_requirements:谁能发起、**应满足**什么归属或角色约束。
+     · authorization_checks:**区分「授权要求」与「代码是否真执行了校验」**。authorization_requirements
+       只陈述「应满足什么」,authorization_checks 则逐条标出代码里**实际有没有**执行该校验:
+       enforced=true 时填 enforced_by(哪段代码/装饰器执行的),enforced=false 说明该要求**代码根本没校验**。
+       **重点找出 enforced=false 的悬空校验**(如「优惠券应属当前用户」但代码没校验归属)——
+       这是越权/优惠券跨用户等业务逻辑漏洞的直接信号,务必如实标出并在 note 里点明绕过方式。
      · state_reads / state_writes / state_transitions:该流程读写了哪些持久化/会话状态、
        允许哪些状态转换(如 paid→refunded)。状态机被绕过是业务逻辑漏洞的重灾区。
      · side_effects / replay_guards:资金/库存/发货等不可逆副作用,以及是否有幂等/防重放

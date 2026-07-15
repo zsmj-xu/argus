@@ -335,6 +335,7 @@ def test_illegal_entries_dropped_all_sections_stay_lists() -> None:
 def test_business_flow_missing_required_fields_dropped() -> None:
     """business_flows 缺 endpoint_id 或 intent 的条目被丢弃。"""
     payload: dict[str, Any] = {
+        "endpoints": [{"id": "ep-ok", "method": "GET", "path": "/ok"}],
         "business_flows": [
             {"intent": "缺 endpoint_id"},
             {"endpoint_id": "ep-y"},
@@ -349,6 +350,10 @@ def test_business_flow_missing_required_fields_dropped() -> None:
 def test_business_flow_trust_boundaries_non_dict_dropped() -> None:
     """trust_boundaries 非 list 时置空;list 内非 dict 条目被丢弃。"""
     payload: dict[str, Any] = {
+        "endpoints": [
+            {"id": "ep-a", "method": "GET", "path": "/a"},
+            {"id": "ep-b", "method": "GET", "path": "/b"},
+        ],
         "business_flows": [
             {
                 "endpoint_id": "ep-a",
@@ -443,6 +448,11 @@ def test_call_edges_queried_and_included_in_prompt() -> None:
 def test_business_flow_new_fields_normalized() -> None:
     """LLM 产出新扩展字段时被正确规整进 business_flows。"""
     payload: dict[str, Any] = {
+        "endpoints": [
+            {"id": "ep-refund", "method": "POST", "path": "/refund"},
+            {"id": "ep-order", "method": "POST", "path": "/order"},
+            {"id": "ep-pay", "method": "POST", "path": "/pay"},
+        ],
         "business_flows": [
             {
                 "endpoint_id": "ep-refund",
@@ -464,7 +474,8 @@ def test_business_flow_new_fields_normalized() -> None:
     assert flow["authorization_requirements"] == ["must own order"]
     assert flow["state_reads"] == ["order.status"]
     assert flow["state_writes"] == ["order.refunded"]
-    assert flow["state_transitions"] == [{"from": "paid", "to": "refunded"}]
+    # state_transition 逐字段规整后补齐缺省 note=""(见 round-2 修复3)。
+    assert flow["state_transitions"] == [{"from": "paid", "to": "refunded", "note": ""}]
     assert flow["side_effects"] == ["refund money"]
     assert flow["replay_guards"] == ["idempotency_key"]
 
@@ -488,6 +499,7 @@ def test_business_flow_new_fields_default_empty_when_absent() -> None:
 def test_business_flow_new_fields_wrong_type_defaults_empty() -> None:
     """新字段类型不对(非 list)时缺省为空 list,list 内非法项按需过滤。"""
     payload: dict[str, Any] = {
+        "endpoints": [{"id": "ep-z", "method": "GET", "path": "/z"}],
         "business_flows": [
             {
                 "endpoint_id": "ep-z",
@@ -503,3 +515,256 @@ def test_business_flow_new_fields_wrong_type_defaults_empty() -> None:
     assert flow["actors"] == []
     # str list 段过滤掉非字符串项。
     assert flow["side_effects"] == ["ok"]
+
+
+# === round-2 修复1:business_flows 引用完整性校验 ===
+
+
+def test_business_flow_dangling_endpoint_id_dropped() -> None:
+    """endpoint_id 不在 endpoints 段(悬空)的整条 flow 被丢弃。"""
+    payload: dict[str, Any] = {
+        "endpoints": [{"id": "ep-real", "method": "GET", "path": "/real"}],
+        "business_flows": [
+            {"endpoint_id": "ep-missing", "intent": "指向不存在的端点"},
+            {"endpoint_id": "ep-real", "intent": "指向真实端点"},
+        ],
+    }
+    flows = ANALYZER.run(_ctx(_fenced(payload)))["enrichment"]["business_flows"]
+    assert len(flows) == 1
+    assert flows[0]["endpoint_id"] == "ep-real"
+
+
+def test_business_flow_dangling_related_endpoint_ids_filtered() -> None:
+    """related_endpoint_ids 只保留存在于 endpoints 段的 id,悬空 id 被过滤。"""
+    payload: dict[str, Any] = {
+        "endpoints": [
+            {"id": "ep-refund", "method": "POST", "path": "/refund"},
+            {"id": "ep-order", "method": "POST", "path": "/order"},
+        ],
+        "business_flows": [
+            {
+                "endpoint_id": "ep-refund",
+                "intent": "退款",
+                "related_endpoint_ids": ["ep-order", "ep-ghost", "ep-order"],
+            }
+        ],
+    }
+    flow = ANALYZER.run(_ctx(_fenced(payload)))["enrichment"]["business_flows"][0]
+    # 只保留真实存在的 ep-order,悬空 ep-ghost 被剔除(且不去重扰乱顺序之外的合法项)。
+    assert "ep-ghost" not in flow["related_endpoint_ids"]
+    assert flow["related_endpoint_ids"] == ["ep-order", "ep-order"]
+
+
+def test_business_flow_endpoint_id_must_reference_kept_endpoint() -> None:
+    """被丢弃(非 dict / 缺 id)的 endpoint 不进入合法 id 集合,引用它的 flow 也被丢。"""
+    payload: dict[str, Any] = {
+        "endpoints": ["not-an-object", {"method": "GET", "path": "/no-id"}],
+        "business_flows": [
+            {"endpoint_id": "ep-x", "intent": "引用了不存在的端点"},
+        ],
+    }
+    flows = ANALYZER.run(_ctx(_fenced(payload)))["enrichment"]["business_flows"]
+    assert flows == []
+
+
+# === round-2 修复2:authorization_checks(区分授权要求与是否真执行) ===
+
+
+def test_authorization_checks_normalized() -> None:
+    """LLM 产出 authorization_checks 时逐字段规整;enforced 强制 bool、enforced_by string|null。"""
+    payload: dict[str, Any] = {
+        "endpoints": [{"id": "ep-coupon", "method": "POST", "path": "/coupon"}],
+        "business_flows": [
+            {
+                "endpoint_id": "ep-coupon",
+                "intent": "使用优惠券",
+                "authorization_checks": [
+                    {
+                        "requirement": "coupon belongs to current user",
+                        "enforced": False,
+                        "enforced_by": None,
+                        "note": "未校验归属",
+                    },
+                    {
+                        "requirement": "user is authenticated",
+                        "enforced": True,
+                        "enforced_by": "require_login decorator",
+                    },
+                ],
+            }
+        ],
+    }
+    flow = ANALYZER.run(_ctx(_fenced(payload)))["enrichment"]["business_flows"][0]
+    checks = flow["authorization_checks"]
+    assert len(checks) == 2
+
+    first = checks[0]
+    assert first["requirement"] == "coupon belongs to current user"
+    assert first["enforced"] is False
+    assert first["enforced_by"] is None
+    assert first["note"] == "未校验归属"
+
+    second = checks[1]
+    assert second["requirement"] == "user is authenticated"
+    assert second["enforced"] is True
+    assert second["enforced_by"] == "require_login decorator"
+    # note 缺省空串。
+    assert second["note"] == ""
+
+
+def test_authorization_checks_default_empty_when_absent() -> None:
+    """LLM 不产 authorization_checks 时缺省为空 list(向后兼容)。"""
+    flow = ANALYZER.run(_ctx(_fenced(_LLM_GRAPH)))["enrichment"]["business_flows"][0]
+    assert flow["authorization_checks"] == []
+
+
+def test_authorization_checks_field_coercion_and_drop() -> None:
+    """requirement 非空 string 才保留;enforced 缺省 false;enforced_by 非 string/None 归 None。"""
+    payload: dict[str, Any] = {
+        "endpoints": [{"id": "ep-c", "method": "POST", "path": "/c"}],
+        "business_flows": [
+            {
+                "endpoint_id": "ep-c",
+                "intent": "c",
+                "authorization_checks": [
+                    "not-a-dict",
+                    {"requirement": "", "enforced": True},
+                    {"enforced": True},
+                    {"requirement": "  ", "enforced": True},
+                    {"requirement": "valid check"},
+                    {"requirement": "bad types", "enforced": "yes", "enforced_by": 123, "note": 5},
+                ],
+            }
+        ],
+    }
+    checks = ANALYZER.run(_ctx(_fenced(payload)))["enrichment"]["business_flows"][0]["authorization_checks"]
+    # 只有 "valid check" 与 "bad types" 两条 requirement 合法。
+    assert len(checks) == 2
+    valid = checks[0]
+    assert valid["requirement"] == "valid check"
+    assert valid["enforced"] is False  # 缺省 false
+    assert valid["enforced_by"] is None
+    assert valid["note"] == ""
+
+    coerced = checks[1]
+    assert coerced["requirement"] == "bad types"
+    assert coerced["enforced"] is False  # "yes" 非 bool -> false
+    assert coerced["enforced_by"] is None  # 123 非 string -> None
+    assert coerced["note"] == ""  # 5 非 string -> 空串
+
+
+# === round-2 修复3:嵌套对象逐字段规整 ===
+
+
+def test_trust_boundary_fields_normalized() -> None:
+    """trust_boundary 逐字段规整:空 {} / 类型错误的条目被丢弃或强制类型。"""
+    payload: dict[str, Any] = {
+        "endpoints": [{"id": "ep-tb", "method": "POST", "path": "/tb"}],
+        "business_flows": [
+            {
+                "endpoint_id": "ep-tb",
+                "intent": "tb",
+                "trust_boundaries": [
+                    {},  # 空对象 -> 丢
+                    {"field": "amount", "source": "request_body", "validated": "yes"},  # validated 强制 bool
+                    {"field": "", "source": "request_body", "validated": True},  # field 空 -> 丢
+                    {"field": "role", "source": "", "validated": True},  # source 空 -> 丢
+                    {"field": "user_id", "source": "session", "validated": True, "note": "ok"},
+                    {"field": "x", "source": "query"},  # 缺 validated -> 缺省 false
+                ],
+            }
+        ],
+    }
+    boundaries = ANALYZER.run(_ctx(_fenced(payload)))["enrichment"]["business_flows"][0]["trust_boundaries"]
+    assert len(boundaries) == 3
+    by_field = {b["field"]: b for b in boundaries}
+
+    assert by_field["amount"]["validated"] is False  # "yes" -> false
+    assert by_field["amount"]["note"] == ""  # 缺省空串
+
+    assert by_field["user_id"]["validated"] is True
+    assert by_field["user_id"]["note"] == "ok"
+
+    assert by_field["x"]["validated"] is False  # 缺 validated -> false
+    assert by_field["x"]["source"] == "query"
+
+
+def test_state_transition_fields_normalized() -> None:
+    """state_transition 逐字段规整:缺 from/to 的条目被丢弃,note 缺省空串。"""
+    payload: dict[str, Any] = {
+        "endpoints": [{"id": "ep-st", "method": "POST", "path": "/st"}],
+        "business_flows": [
+            {
+                "endpoint_id": "ep-st",
+                "intent": "st",
+                "state_transitions": [
+                    {},  # 空 -> 丢
+                    {"from": "paid"},  # 缺 to -> 丢
+                    {"to": "refunded"},  # 缺 from -> 丢
+                    {"from": "", "to": "refunded"},  # from 空 -> 丢
+                    {"from": "paid", "to": "refunded"},  # note 缺省空串
+                    {"from": "created", "to": "paid", "note": "只应支付一次"},
+                ],
+            }
+        ],
+    }
+    transitions = ANALYZER.run(_ctx(_fenced(payload)))["enrichment"]["business_flows"][0]["state_transitions"]
+    assert len(transitions) == 2
+    by_from = {t["from"]: t for t in transitions}
+    assert by_from["paid"]["to"] == "refunded"
+    assert by_from["paid"]["note"] == ""
+    assert by_from["created"]["note"] == "只应支付一次"
+
+
+# === round-2 修复Minor2:调用边两端都须在骨架内 ===
+
+
+class _DanglingCallGraph:
+    """callees 返回一个不在骨架 node 集合内的外部节点,用于验证调用边过滤。"""
+
+    def __init__(self) -> None:
+        self.nodes: list[dict[str, Any]] = [
+            {
+                "id": "api/orders.py::list_orders",
+                "kind": "function",
+                "name": "list_orders",
+                "qualified_name": "api.orders.list_orders",
+                "file_path": "api/orders.py",
+                "start_line": 10,
+                "end_line": 20,
+                "signature": "def list_orders()",
+            },
+        ]
+
+    def query(self, search: str) -> list[dict[str, Any]]:
+        assert search == ""
+        return list(self.nodes)
+
+    def node(self, node_id: str) -> dict[str, Any] | None:
+        return next((n for n in self.nodes if n["id"] == node_id), None)
+
+    def callees(self, symbol: str) -> list[dict[str, Any]]:
+        if symbol == "api/orders.py::list_orders":
+            # 被调方不在骨架里(如第三方库函数)。
+            return [{"id": "vendor/lib.py::helper", "name": "helper"}]
+        return []
+
+    def callers(self, symbol: str) -> list[dict[str, Any]]:
+        del symbol
+        return []
+
+    def explore(self, query: str) -> str:
+        return query
+
+
+def test_call_edges_filtered_to_skeleton_nodes() -> None:
+    """caller/callee 若不在骨架合法 node id 集合内,该调用边被丢弃(两端都在才保留)。"""
+    graph = _DanglingCallGraph()
+    ctx = _ctx_with_graph(graph, _fenced(_LLM_GRAPH))
+    ANALYZER.run(ctx)
+
+    llm = ctx["llm"]
+    assert isinstance(llm, _FakeLLM)
+    prompt = llm.calls[0]["prompt"]
+    # 悬空的被调方不应出现在 prompt 的调用边里。
+    assert "vendor/lib.py::helper" not in prompt

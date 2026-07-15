@@ -1,11 +1,14 @@
 """business-flow 富化器 —— 在 codegraph 骨架上重建业务流语义。
 
 流程(见 run 内 1..6 步):
-1. 从 codegraph 拉出函数/方法节点,组成静态调用图骨架,并沿 calls 边补出真实调用关系。
+1. 从 codegraph 拉出函数/方法节点,组成静态调用图骨架,并沿 calls 边补出真实调用关系
+   (仅保留两端都在骨架内的调用边,丢弃指向骨架外符号的悬空边)。
 2. 为骨架节点读取源码片段,拼出给 LLM 的上下文。
 3. 组 prompt(骨架 + 调用边 + 上下文),调 LLM 单轮补全。
 4. 健壮解析 LLM 返回的 JSON(剥离 markdown 围栏,失败则优雅降级)。
-5. 规整成稳定的 enrichment 结构:逐段丢弃非法条目、校验 business_flows 必需字段,
+5. 规整成稳定的 enrichment 结构:逐段丢弃非法条目、校验 business_flows 必需字段与
+   引用完整性(endpoint_id/related_endpoint_ids 须指向真实 endpoint)、逐字段规整嵌套
+   对象(trust_boundaries/state_transitions/authorization_checks),
    并把 handler/endpoint 的 node_id 消歧后锚回 codegraph 真实节点。
 6. 返回 AnalyzerResult:findings 恒为空(富化器不下漏洞结论),产物全在 enrichment。
 
@@ -17,6 +20,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from argus.analyzers.base import AnalyzerBase
@@ -54,8 +58,10 @@ _FLOW_STR_LIST_FIELDS = (
     "replay_guards",
 )
 
-# business_flows[] 中「值为对象列表」的可选字段;缺省/类型不符时规整为空 list,非 dict 条目丢弃。
-_FLOW_DICT_LIST_FIELDS = ("trust_boundaries", "state_transitions")
+# business_flows[] 中「值为对象列表」的可选字段。每个字段配一个逐字段规整器:
+# 非 dict 条目丢弃,必需子字段缺失/非法的条目丢弃,其余子字段强制到稳定类型。
+# 映射在 _NESTED_OBJECT_NORMALIZERS 里给出(定义在规整器之后)。
+_FLOW_DICT_LIST_FIELDS = ("trust_boundaries", "state_transitions", "authorization_checks")
 
 _SYSTEM = (
     "你是一名资深应用安全工程师,擅长把 Web/API 代码库抽象成业务流语义,"
@@ -116,11 +122,14 @@ def _collect_call_edges(graph: GraphHandle, nodes: list[dict[str, Any]]) -> list
     """沿 codegraph 的 calls 边为骨架节点补出真实调用关系(谁调用谁)。
 
     对每个骨架节点查询 callees(它调用了谁)与 callers(谁调用了它),合并去重成有向边。
+    只保留 **两端都在骨架 node 集合内** 的边:callers/callees 可能返回骨架外的符号
+    (如第三方库函数),这类悬空边对下游业务流分析无意义,直接丢弃。
     为防大仓 prompt 爆炸与查询过多:最多探查 `_MAX_CALL_EDGE_PROBE_NODES` 个节点,
     且总边数达到 `_MAX_CALL_EDGES` 即停止。
     """
     edges: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
+    skeleton_ids = {str(node.get("id")) for node in nodes if isinstance(node.get("id"), str) and node.get("id")}
 
     for node in nodes[:_MAX_CALL_EDGE_PROBE_NODES]:
         node_id = node.get("id")
@@ -130,13 +139,13 @@ def _collect_call_edges(graph: GraphHandle, nodes: list[dict[str, Any]]) -> list
 
         # node_id 调用了谁:node_id -> callee
         for callee in graph.callees(node_id):
-            if _append_call_edge(edges, seen, node_id, node_name, callee.get("id"), callee.get("name")):
+            if _append_call_edge(edges, seen, skeleton_ids, node_id, node_name, callee.get("id"), callee.get("name")):
                 if len(edges) >= _MAX_CALL_EDGES:
                     return edges
 
         # 谁调用了 node_id:caller -> node_id
         for caller in graph.callers(node_id):
-            if _append_call_edge(edges, seen, caller.get("id"), caller.get("name"), node_id, node_name):
+            if _append_call_edge(edges, seen, skeleton_ids, caller.get("id"), caller.get("name"), node_id, node_name):
                 if len(edges) >= _MAX_CALL_EDGES:
                     return edges
 
@@ -146,13 +155,19 @@ def _collect_call_edges(graph: GraphHandle, nodes: list[dict[str, Any]]) -> list
 def _append_call_edge(
     edges: list[dict[str, Any]],
     seen: set[tuple[str, str]],
+    skeleton_ids: set[str],
     from_id: Any,
     from_name: Any,
     to_id: Any,
     to_name: Any,
 ) -> bool:
-    """把一条 (from_id -> to_id) 调用边去重后追加。追加成功返回 True。"""
+    """把一条 (from_id -> to_id) 调用边去重后追加。追加成功返回 True。
+
+    两端都须是骨架内的合法 node id;任一端悬空(不在 `skeleton_ids`)则丢弃。
+    """
     if not isinstance(from_id, str) or not from_id or not isinstance(to_id, str) or not to_id:
+        return False
+    if from_id not in skeleton_ids or to_id not in skeleton_ids:
         return False
     key = (from_id, to_id)
     if key in seen:
@@ -283,8 +298,12 @@ def _assemble_enrichment(parsed: dict[str, Any] | None, skeleton_nodes: list[dic
     enrichment["endpoints"] = _anchor_endpoints(
         raw_sections["endpoints"], valid_ids, endpoint_to_handler, handler_node_id
     )
-    # 业务流:丢非法条目 + 校验必需字段 + 规整可选扩展字段。
-    enrichment["business_flows"] = _normalize_business_flows(raw_sections["business_flows"])
+    # 合法 endpoint id 集合:business_flows 的 endpoint_id/related_endpoint_ids 引用完整性校验用。
+    valid_endpoint_ids = {
+        str(ep.get("id")) for ep in enrichment["endpoints"] if isinstance(ep.get("id"), str) and ep.get("id")
+    }
+    # 业务流:丢非法条目 + 校验必需字段与引用完整性 + 规整可选扩展字段与嵌套对象。
+    enrichment["business_flows"] = _normalize_business_flows(raw_sections["business_flows"], valid_endpoint_ids)
 
     return enrichment
 
@@ -317,11 +336,86 @@ def _str_list(value: Any) -> list[str]:
     return [item for item in value if isinstance(item, str)]
 
 
-def _dict_list(value: Any) -> list[dict[str, Any]]:
-    """把 value 规整成对象列表:非 list 返回 [];list 内非 dict 项丢弃。"""
+def _coerce_bool(value: Any) -> bool:
+    """把 value 强制成 bool:仅真正的 bool 透传,其它一律 False(缺省/类型不符时的安全默认)。"""
+    return value if isinstance(value, bool) else False
+
+
+def _optional_string(value: Any) -> str | None:
+    """string 透传,其它(含 None / 非 string)一律 None。"""
+    return value if isinstance(value, str) else None
+
+
+def _string_or_empty(value: Any) -> str:
+    """string 透传,其它一律空串。"""
+    return value if isinstance(value, str) else ""
+
+
+def _normalize_trust_boundary(item: dict[str, Any]) -> dict[str, Any] | None:
+    """逐字段规整 trust_boundary:field/source 须非空 string(否则丢);validated 强制 bool;note 缺省空串。"""
+    field = _required_string(item.get("field"))
+    source = _required_string(item.get("source"))
+    if field is None or source is None:
+        return None
+    return {
+        "field": field,
+        "source": source,
+        "validated": _coerce_bool(item.get("validated")),
+        "note": _string_or_empty(item.get("note")),
+    }
+
+
+def _normalize_state_transition(item: dict[str, Any]) -> dict[str, Any] | None:
+    """逐字段规整 state_transition:from/to 须非空 string(否则丢);note 缺省空串。"""
+    from_state = _required_string(item.get("from"))
+    to_state = _required_string(item.get("to"))
+    if from_state is None or to_state is None:
+        return None
+    return {
+        "from": from_state,
+        "to": to_state,
+        "note": _string_or_empty(item.get("note")),
+    }
+
+
+def _normalize_authorization_check(item: dict[str, Any]) -> dict[str, Any] | None:
+    """逐字段规整 authorization_check:requirement 须非空 string(否则丢);enforced 强制 bool;
+    enforced_by 为 string 或 None;note 缺省空串。区分「授权要求」与「是否真执行了校验」。
+    """
+    requirement = _required_string(item.get("requirement"))
+    if requirement is None:
+        return None
+    return {
+        "requirement": requirement,
+        "enforced": _coerce_bool(item.get("enforced")),
+        "enforced_by": _optional_string(item.get("enforced_by")),
+        "note": _string_or_empty(item.get("note")),
+    }
+
+
+# 逐字段规整器签名:输入一个 dict 条目,返回规整后的 dict,或判非法时返回 None(丢弃)。
+_NestedNormalizer = Callable[[dict[str, Any]], dict[str, Any] | None]
+
+# business_flows[] 对象列表字段 → 逐字段规整器。非 dict 条目与规整器判非法(返回 None)的条目均丢弃。
+_NESTED_OBJECT_NORMALIZERS: dict[str, _NestedNormalizer] = {
+    "trust_boundaries": _normalize_trust_boundary,
+    "state_transitions": _normalize_state_transition,
+    "authorization_checks": _normalize_authorization_check,
+}
+
+
+def _normalize_dict_list(value: Any, normalizer: _NestedNormalizer) -> list[dict[str, Any]]:
+    """把 value 规整成对象列表:非 list 返回 [];非 dict 项丢弃;逐字段规整器返回 None 的项丢弃。"""
     if not isinstance(value, list):
         return []
-    return [item for item in value if isinstance(item, dict)]
+    normalized: list[dict[str, Any]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        result = normalizer(item)
+        if result is not None:
+            normalized.append(result)
+    return normalized
 
 
 def _build_name_index(nodes: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
@@ -476,13 +570,16 @@ def _anchor_endpoints(
     return anchored
 
 
-def _normalize_business_flows(flows: list[Any]) -> list[dict[str, Any]]:
-    """规整 business_flows:丢非法/缺必需字段的条目,把可选扩展字段规整为稳定类型。
+def _normalize_business_flows(flows: list[Any], valid_endpoint_ids: set[str]) -> list[dict[str, Any]]:
+    """规整 business_flows:丢非法/缺必需字段/悬空引用的条目,把可选扩展字段规整为稳定类型。
 
     - 非 dict 条目丢弃。
     - 缺 endpoint_id 或 intent(须为非空字符串)的条目丢弃。
+    - **引用完整性**:endpoint_id 不在 `valid_endpoint_ids`(不指向真实 endpoint)的整条 flow 丢弃;
+      related_endpoint_ids 只保留存在于 `valid_endpoint_ids` 的 id(悬空 id 过滤掉)。
     - 字符串列表字段(preconditions 等)缺省/类型不符 → 空 list,list 内非字符串项丢弃。
-    - 对象列表字段(trust_boundaries / state_transitions)缺省/类型不符 → 空 list,非 dict 项丢弃。
+    - 对象列表字段(trust_boundaries / state_transitions / authorization_checks)缺省/类型不符 → 空 list;
+      非 dict 项丢弃;逐字段规整(必需子字段缺失的条目丢弃,其余子字段强制到稳定类型)。
     """
     normalized: list[dict[str, Any]] = []
     for index, flow in enumerate(flows):
@@ -496,11 +593,23 @@ def _normalize_business_flows(flows: list[Any]) -> list[dict[str, Any]]:
             logger.warning("Discarding business_flows entry %d: missing required endpoint_id/intent", index)
             continue
 
+        if endpoint_id not in valid_endpoint_ids:
+            logger.warning(
+                "Discarding business_flows entry %d: endpoint_id %r does not reference any endpoint",
+                index,
+                endpoint_id,
+            )
+            continue
+
         entry: dict[str, Any] = {"endpoint_id": endpoint_id, "intent": intent}
         for field in _FLOW_STR_LIST_FIELDS:
             entry[field] = _str_list(flow.get(field))
+        # related_endpoint_ids 引用完整性:只保留指向真实 endpoint 的 id。
+        entry["related_endpoint_ids"] = [
+            ep_id for ep_id in entry["related_endpoint_ids"] if ep_id in valid_endpoint_ids
+        ]
         for field in _FLOW_DICT_LIST_FIELDS:
-            entry[field] = _dict_list(flow.get(field))
+            entry[field] = _normalize_dict_list(flow.get(field), _NESTED_OBJECT_NORMALIZERS[field])
         normalized.append(entry)
 
     return normalized
