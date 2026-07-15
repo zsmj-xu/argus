@@ -27,7 +27,7 @@ from argus.contracts import (
 logger = logging.getLogger(__name__)
 
 _CALLABLE_KINDS = frozenset({"function", "method"})
-_DEFAULT_MAX_CANDIDATES = 40
+_DEFAULT_BATCH_SIZE = 40
 _DEFAULT_SOURCE_CHARS = 3000
 
 _SEVERITIES: dict[str, Severity] = {member.value: member for member in Severity}
@@ -48,28 +48,45 @@ class AuthzAnalyzer(AnalyzerBase):
             logger.info("Authorization analysis skipped: codegraph has no callable nodes in scope")
             return self._empty_result()
 
-        response = ctx["llm"].complete(
-            system=self._load_prompt(),
-            prompt=self._build_user_prompt(ctx, candidates),
-            max_tokens=self._max_tokens(ctx["config"]),
-        )
-        payload = self._parse_response(response)
-        if payload is None:
-            return self._empty_result()
-
-        raw_findings = payload.get("findings")
-        if not isinstance(raw_findings, list):
-            logger.warning("Authorization analyzer response JSON must contain a findings list")
-            return self._empty_result()
-
+        system = self._load_prompt()
         findings: list[Finding] = []
-        for index, raw_finding in enumerate(raw_findings):
-            if not isinstance(raw_finding, dict):
-                logger.warning("Discarding authz finding %d: finding must be a JSON object", index)
+        seen_ids: set[str] = set()
+        batch_size = self._positive_int(
+            self._authz_config(ctx["config"]).get("batch_size"),
+            _DEFAULT_BATCH_SIZE,
+        )
+        batches = [candidates[offset : offset + batch_size] for offset in range(0, len(candidates), batch_size)]
+        for batch_index, batch in enumerate(batches, start=1):
+            response = ctx["llm"].complete(
+                system=system,
+                prompt=self._build_user_prompt(ctx, batch, batch_index=batch_index, batch_count=len(batches)),
+                max_tokens=self._max_tokens(ctx["config"]),
+            )
+            payload = self._parse_response(response)
+            if payload is None:
                 continue
-            finding = self._convert_finding(cast(dict[str, Any], raw_finding), ctx["graph"], index)
-            if finding is not None:
-                findings.append(finding)
+
+            raw_findings = payload.get("findings")
+            if not isinstance(raw_findings, list):
+                logger.warning("Authorization analyzer response JSON must contain a findings list")
+                continue
+
+            for finding_index, raw_finding in enumerate(raw_findings):
+                if not isinstance(raw_finding, dict):
+                    logger.warning(
+                        "Discarding authz finding batch %d item %d: finding must be a JSON object",
+                        batch_index,
+                        finding_index,
+                    )
+                    continue
+                finding = self._convert_finding(
+                    cast(dict[str, Any], raw_finding),
+                    ctx["graph"],
+                    finding_index,
+                )
+                if finding is not None and finding["id"] not in seen_ids:
+                    seen_ids.add(finding["id"])
+                    findings.append(finding)
 
         return {"analyzer": self.name, "findings": findings, "enrichment": {}}
 
@@ -81,10 +98,6 @@ class AuthzAnalyzer(AnalyzerBase):
         config = ctx["config"]
         focus = config.get("focus")
         avoid = config.get("avoid")
-        max_candidates = self._positive_int(
-            self._authz_config(config).get("max_candidates"),
-            _DEFAULT_MAX_CANDIDATES,
-        )
         source_chars = self._positive_int(
             self._authz_config(config).get("source_chars"),
             _DEFAULT_SOURCE_CHARS,
@@ -109,16 +122,22 @@ class AuthzAnalyzer(AnalyzerBase):
             candidate["callees"] = [self._neighbor_summary(item) for item in ctx["graph"].callees(node_id)]
             candidate["source_excerpt"] = self._source_excerpt(ctx, details, source_chars)
             candidates.append(candidate)
-            if len(candidates) >= max_candidates:
-                break
 
         return candidates
 
-    def _build_user_prompt(self, ctx: AnalysisContext, candidates: list[dict[str, Any]]) -> str:
+    def _build_user_prompt(
+        self,
+        ctx: AnalysisContext,
+        candidates: list[dict[str, Any]],
+        *,
+        batch_index: int,
+        batch_count: int,
+    ) -> str:
         input_payload = {
             "workspace": ctx["workspace"],
             "config": ctx["config"],
             "enriched_graph": ctx["enriched"],
+            "scan_batch": {"index": batch_index, "count": batch_count},
             "codegraph_candidates": candidates,
         }
         return (
@@ -244,6 +263,15 @@ class AuthzAnalyzer(AnalyzerBase):
         if isinstance(start_line, int) and isinstance(end_line, int) and not start_line <= line <= end_line:
             logger.warning(
                 "Authz finding %d line %d is outside node %r range; anchoring to line %d",
+                finding_index,
+                line,
+                node_id,
+                start_line,
+            )
+            line = start_line
+        elif isinstance(start_line, int) and not isinstance(end_line, int) and line != start_line:
+            logger.warning(
+                "Authz finding %d line %d has no bounded node range for %r; anchoring to line %d",
                 finding_index,
                 line,
                 node_id,

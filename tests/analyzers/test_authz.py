@@ -28,11 +28,13 @@ class MockLLM:
         self.response = response
         self.system = ""
         self.prompt = ""
+        self.prompts: list[str] = []
 
     def complete(self, *, system: str, prompt: str, max_tokens: int = 8192) -> str:
         del max_tokens
         self.system = system
         self.prompt = prompt
+        self.prompts.append(prompt)
         return self.response
 
 
@@ -69,7 +71,7 @@ def _context(llm: MockLLM) -> AnalysisContext:
             ]
         },
         "source": MockSource(),
-        "config": {"authz": {"max_candidates": 50}, "focus": "api/"},
+        "config": {"authz": {"batch_size": 50}, "focus": "api/"},
         "llm": llm,
         "workspace": "test-authz",
     }
@@ -126,3 +128,91 @@ def test_authz_handles_malformed_llm_json(caplog: pytest.LogCaptureFixture) -> N
 
     assert result == {"analyzer": "authz", "findings": [], "enrichment": {}}
     assert "JSON" in caplog.text
+
+
+def test_authz_batches_without_truncating_callable_coverage() -> None:
+    class ManyNodeGraph:
+        def query(self, search: str) -> list[dict[str, object]]:
+            assert search == ""
+            return [
+                {
+                    "id": f"api/routes.py::handler_{index}",
+                    "kind": "function",
+                    "name": f"handler_{index}",
+                    "qualified_name": f"api.routes.handler_{index}",
+                    "file_path": "api/routes.py",
+                    "start_line": index + 1,
+                    "end_line": index + 1,
+                }
+                for index in range(3)
+            ]
+
+        def node(self, node_id: str) -> dict[str, object] | None:
+            return next((node for node in self.query("") if node["id"] == node_id), None)
+
+        def callers(self, symbol: str) -> list[dict[str, object]]:
+            del symbol
+            return []
+
+        def callees(self, symbol: str) -> list[dict[str, object]]:
+            del symbol
+            return []
+
+        def explore(self, query: str) -> str:
+            return query
+
+    llm = MockLLM(json.dumps({"findings": []}))
+    ctx = _context(llm)
+    ctx["graph"] = ManyNodeGraph()
+    ctx["config"] = {"authz": {"batch_size": 1}}
+
+    result = ANALYZER.run(ctx)
+
+    assert result["findings"] == []
+    assert len(llm.prompts) == 3
+    assert all(f"handler_{index}" in prompt for index, prompt in enumerate(llm.prompts))
+
+
+def test_authz_anchors_line_to_start_when_node_has_no_end_line() -> None:
+    class PartialRangeGraph:
+        def query(self, search: str) -> list[dict[str, object]]:
+            assert search == ""
+            return [
+                {
+                    "id": "api/routes.py::handler",
+                    "kind": "function",
+                    "name": "handler",
+                    "file_path": "api/routes.py",
+                    "start_line": 17,
+                    "end_line": None,
+                }
+            ]
+
+        def node(self, node_id: str) -> dict[str, object] | None:
+            return self.query("")[0] if node_id == "api/routes.py::handler" else None
+
+        def callers(self, symbol: str) -> list[dict[str, object]]:
+            del symbol
+            return []
+
+        def callees(self, symbol: str) -> list[dict[str, object]]:
+            del symbol
+            return []
+
+        def explore(self, query: str) -> str:
+            return query
+
+    payload = _finding_payload(node_id="api/routes.py::handler")
+    payload["locations"] = [{"file": "wrong.py", "line": 999999, "node_id": "api/routes.py::handler"}]
+    llm = MockLLM(json.dumps({"findings": [payload]}))
+    ctx = _context(llm)
+    ctx["graph"] = PartialRangeGraph()
+    ctx["config"] = {"authz": {"batch_size": 10}}
+
+    result = ANALYZER.run(ctx)
+
+    assert result["findings"][0]["locations"][0] == {
+        "file": "api/routes.py",
+        "line": 17,
+        "node_id": "api/routes.py::handler",
+    }
