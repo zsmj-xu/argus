@@ -55,7 +55,7 @@
 
 | Task | 标题 | 归属 | 依赖 | 里程碑 | 状态 |
 |---|---|---|---|---|---|
-| T06 | authz 漏洞分析器 | codex | T05 | M2 | review |
+| T06 | authz 漏洞分析器 | codex | T05 | M2 | ✅ done |
 | T07 | 报告生成 | claude | T05 | M2 | ✅ done |
 | T08 | injection/xss/auth/ssrf 分析器 | codex | T06 | M2 | in_progress |
 | T09 | interrupt 检查点 + continue | claude | T05 | M3 | pending |
