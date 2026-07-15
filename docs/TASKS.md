@@ -14,11 +14,14 @@
 ## 共享文件协调
 
 以下文件多人可能触及,改前在此声明避免撞车:
-- `argus/argus/orchestration/pipeline.py`(编排接线)
-- `argus/argus/orchestration/registry.py`(注册表)
-- `argus/argus/cli.py`(命令分发)
+- `argus/orchestration/pipeline.py`(编排接线)
+- `argus/orchestration/registry.py`(注册表)
+- `argus/cli.py`(命令分发)
 
-(当前无进行中的声明。)
+**进行中的声明:**
+- **claude / T07**:改 `argus/orchestration/pipeline.py` 的 **report 节点**(接真实报告渲染,替换占位 markdown)。只动 report 节点这一处,不碰 build_graph/enrichment/vuln/interrupt 节点。codex 若需改 pipeline 其它部分,可并行,合并时注意 report 节点归 T07。
+
+> ⚠️ **给 codex 的提醒(重要)**:`codex/T06` 分支是从 T12 合并**之前**的 main 拉的。直接合并会与 `main` 上已有的 T12(business_flow 富化器)产生冲突/回退。**合并 T06 前请先 `git rebase main` 或 `git merge main`**,把 T12 的改动纳入,确认 business_flow 目录仍在。
 
 ---
 
@@ -53,7 +56,7 @@
 | Task | 标题 | 归属 | 依赖 | 里程碑 | 状态 |
 |---|---|---|---|---|---|
 | T06 | authz 漏洞分析器 | codex | T05 | M2 | in_progress |
-| T07 | 报告生成 | claude | T05 | M2 | pending |
+| T07 | 报告生成 | claude | T05 | M2 | in_progress |
 | T08 | injection/xss/auth/ssrf 分析器 | codex | T06 | M2 | pending |
 | T09 | interrupt 检查点 + continue | claude | T05 | M3 | pending |
 | T10 | 命令行参数注入 --set/--focus | claude | T09 | M3 | pending |
