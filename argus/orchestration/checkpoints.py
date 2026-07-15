@@ -22,9 +22,14 @@ from langgraph.types import interrupt
 from argus.contracts import ArgusState
 from argus.orchestration.state import workspace_dir
 
-# ArgusState 里的 SourceMode 是自定义 (str, Enum);显式登记到 msgpack 允许列表,
-# 否则 LangGraph 反序列化时会告警并在未来版本拒绝。
-_ALLOWED_MSGPACK_MODULES = [("argus.contracts", "SourceMode")]
+# ArgusState / Finding 里的枚举都是自定义 (str, Enum);显式登记到 msgpack 允许列表,
+# 否则 LangGraph 反序列化时会把它们退化成普通 str(finding['severity'].value 会
+# 在 report 节点抛 AttributeError),并在未来版本告警/拒绝。
+_ALLOWED_MSGPACK_MODULES = [
+    ("argus.contracts", "SourceMode"),
+    ("argus.contracts", "Severity"),
+    ("argus.contracts", "Confidence"),
+]
 
 # 两个检查点节点的稳定名。cli --yolo 及 config.checkpoints 用这些名字寻址。
 REVIEW_ENRICHMENT = "review-enrichment"

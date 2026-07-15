@@ -48,8 +48,7 @@ class CodegraphHandle:
         conn = self._connect()
         try:
             cursor = conn.execute(
-                "SELECT * FROM nodes WHERE lower(name) LIKE ? "
-                "OR lower(qualified_name) LIKE ? ORDER BY name",
+                "SELECT * FROM nodes WHERE lower(name) LIKE ? OR lower(qualified_name) LIKE ? ORDER BY name",
                 (pattern, pattern),
             )
             return [_row_to_dict(row) for row in cursor.fetchall()]

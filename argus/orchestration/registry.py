@@ -31,18 +31,25 @@ def discover_analyzers() -> dict[str, Analyzer]:
         submodule_name = f"{analyzers_pkg.__name__}.{module_info.name}.analyzer"
         try:
             module = importlib.import_module(submodule_name)
-        except ModuleNotFoundError:
-            # 子包没有 analyzer.py —— 不是分析器目录,跳过。
-            continue
+        except ModuleNotFoundError as exc:
+            # 区分两种 ModuleNotFoundError:
+            # - exc.name == submodule_name:该目录根本没有 analyzer.py —— 不是分析器
+            #   目录,静默跳过(约定行为)。
+            # - 否则:analyzer.py 存在,但它内部 import 了一个不存在的模块 —— 这是真
+            #   bug,静默丢弃会让分析器"查无此人、无报错",极难 debug。重新抛出,附上
+            #   缺失模块名让排查有的放矢。
+            if exc.name == submodule_name:
+                continue
+            raise ModuleNotFoundError(
+                f"analyzer module {submodule_name!r} exists but failed to import: missing dependency {exc.name!r}"
+            ) from exc
 
         instance = getattr(module, "ANALYZER", None)
         if instance is None:
             continue
 
         if not isinstance(instance, Analyzer):
-            raise TypeError(
-                f"{submodule_name}.ANALYZER does not satisfy the Analyzer protocol"
-            )
+            raise TypeError(f"{submodule_name}.ANALYZER does not satisfy the Analyzer protocol")
 
         if instance.name in registry:
             raise ValueError(f"duplicate analyzer name: {instance.name!r}")

@@ -130,9 +130,7 @@ def cmd_workspaces(_args: argparse.Namespace) -> int:
         print("[argus] no workspaces yet")
         return 0
 
-    names = sorted(
-        entry for entry in os.listdir(RUNS_ROOT) if os.path.isdir(os.path.join(RUNS_ROOT, entry))
-    )
+    names = sorted(entry for entry in os.listdir(RUNS_ROOT) if os.path.isdir(os.path.join(RUNS_ROOT, entry)))
     if not names:
         print("[argus] no workspaces yet")
         return 0
