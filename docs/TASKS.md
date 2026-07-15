@@ -56,12 +56,12 @@
 | Task | 标题 | 归属 | 依赖 | 里程碑 | 状态 |
 |---|---|---|---|---|---|
 | T06 | authz 漏洞分析器 | codex | T05 | M2 | ✅ done |
-| T07 | 报告生成 | claude | T05 | M2 | done⚠️(补 codex 回审中) |
+| T07 | 报告生成 | claude | T05 | M2 | done⚠️(回审完成,待小修) |
 | T08 | injection/xss/auth/ssrf 分析器 | codex | T06 | M2 | in_progress |
 | T09 | interrupt 检查点 + continue | claude | T05 | M3 | pending |
 | T10 | 命令行参数注入 --set/--focus | claude | T09 | M3 | pending |
 | T11 | 改产物文件后 continue | claude | T09 | M3 | pending |
-| T12 | business-flow 富化器 | claude | T05 | M4 | done⚠️(补 codex 回审中) |
+| T12 | business-flow 富化器 | claude | T05 | M4 | done⚠️(回审完成,待修复) |
 | T13 | business-logic 漏洞分析器 | codex | T12 | M4 | pending |
 | T14 | invariant 富化器(实验性) | codex | T12 | M4 | pending |
 | T15 | 靶场资产导入 | codex | T05 | M5 | pending |
