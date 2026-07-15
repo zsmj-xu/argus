@@ -172,8 +172,7 @@ class Analyzer(Protocol):
     phase: Phase  # 所属阶段
     requires: list[str]  # 依赖的产物 key(如 ["enriched-graph"]);编排据此拓扑排序
 
-    def run(self, ctx: AnalysisContext) -> AnalyzerResult:
-        ...
+    def run(self, ctx: AnalysisContext) -> AnalyzerResult: ...
 
 
 # ============================================================
