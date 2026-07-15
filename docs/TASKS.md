@@ -62,7 +62,7 @@
 | T10 | 命令行参数注入 --set/--focus | claude | T09 | M3 | pending |
 | T11 | 改产物文件后 continue | claude | T09 | M3 | pending |
 | T12 | business-flow 富化器 | claude | T05 | M4 | done⚠️(回审完成,待修复) |
-| **T12F** | **business-flow 修复(2轮:调用边/段内规整/node_id 消歧/schema 扩展/引用完整性/授权执行状态/嵌套规整)** | **claude** | **T12** | **M4** | **review⏳(第2轮完成,待 Codex 复审)** |
+| **T12F** | **business-flow 修复(2轮:调用边/段内规整/node_id 消歧/schema 扩展/引用完整性/授权执行状态/嵌套规整)** | **claude** | **T12** | **M4** | **review✅(Codex 复审通过,可合)** |
 | T07F | 报告 Markdown 链接小修(回审 1 项) | claude | T07 | M2 | in_progress |
 | T13 | business-logic 漏洞分析器 | codex | **T12F** | M4 | pending |
 | T14 | invariant 富化器(实验性) | codex | T12 | M4 | in_progress |

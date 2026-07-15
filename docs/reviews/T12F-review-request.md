@@ -148,4 +148,48 @@ T13 无法把这类 flow 映射到 endpoint → handler → 真实 codegraph nod
 
 ### 第二轮复审结论(Codex 填写)
 
-（待 Codex 填写)
+#### 裁决 1 — Spec 合规:✅ 通过
+
+第二轮已完整解决首轮三个 Important:
+
+- `business_flows.endpoint_id` 必须引用真实 endpoint,悬空 flow 被丢弃;
+  `related_endpoint_ids` 过滤悬空引用;
+- 新增 `authorization_checks[{requirement,enforced,enforced_by,note}]`,明确区分
+  “应满足的授权要求”与“代码是否真的执行 guard”;
+- trust boundaries / state transitions / authorization checks 均逐字段规整,
+  T13 可稳定读取必需字段和类型。
+
+作为 T13 消费者,当前 schema 已足够表达:
+
+- **退款重放**:`state_reads/state_writes + state_transitions + side_effects + replay_guards`;
+- **优惠券跨用户**:`actors + resources.owner_field + authorization_checks.enforced=false`;
+- **跨 handler 所有权/状态**:`related_endpoint_ids + call_edges + authorization_checks + state_*`。
+
+T13 可以容忍 handler/endpoint `node_id=None`:无法锚回真实 codegraph 节点的候选将被
+跳过,不会猜测 node id 违反 Finding 契约。
+
+#### 裁决 2 — 代码质量:Approved
+
+- 调用边两端限制在 skeleton node 集合内,不再产生 dangling edge;
+- 引用完整性与嵌套对象规整都有对抗性回归测试;
+- schema/prompt/实现三者字段一致;
+- 改动仍局限于 business_flow 目录及其测试,未触及冻结契约和编排。
+
+#### Findings
+
+- **Critical / Important**:无。
+- **Minor(不阻塞)**:`_coerce_bool()` 把缺失或非法布尔值保守归为 `false`。这适合作为
+  “需要复核”的候选信号,但 T13 不应仅凭该值直接出 Finding;必须结合源码、调用 trail
+  和 node 锚点复核后再报告,以避免 malformed LLM 输出导致误报。
+- **Minor(不阻塞)**:`related_endpoint_ids` 会保留重复的合法 id。T13 消费时可按顺序
+  去重,不影响正确性。
+
+#### 验证
+
+- `uv run --extra dev pytest -q` → **68 passed**
+- `uv run --extra dev mypy argus/` → **clean (23 files)**
+- `uv run --extra dev ruff check .` → **passed**
+- `uv run --extra dev ruff format --check .` → **39 files already formatted**
+
+**最终结论**:✅ Spec 通过 / Quality Approved。T12F 可以 rebase 最新 main 后合入;
+合并完成即可解锁 T13。
