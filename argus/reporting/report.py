@@ -11,7 +11,9 @@
 
 from __future__ import annotations
 
+import os
 from enum import Enum
+from urllib.parse import quote
 
 from argus.contracts import ArgusState, Finding
 
@@ -112,17 +114,36 @@ def _code_fence(content: str) -> str:
     return "`" * max(3, longest_run + 1)
 
 
-def _location_link(file: str, line: int) -> str:
+def _link_target(file: str, line: int, repo_path: str, report_dir: str) -> str:
+    """算出从报告文件指向真实源码的可点击链接目标(含行号锚点)。
+
+    `location["file"]` 是相对仓库根(repo_path)的路径,而报告实际写在 report_dir
+    (runs/<ws>/)。Markdown 相对链接从报告所在目录解析,故必须计算「从 report_dir
+    指向 repo_path/file」的相对路径,否则点击会落到 report_dir 下不存在的位置。
+
+    路径部分用标准 URL 编码(quote),把空格、`#`(否则被当 fragment 分隔)、`)`
+    (否则截断 Markdown 链接目标)等特殊字符编码掉;`/` 保留为路径分隔符。行号锚点
+    `#L<line>` 在编码之后单独拼接,不参与编码。
+    """
+    absolute = os.path.join(repo_path, file)
+    relative = os.path.relpath(absolute, report_dir)
+    # quote 默认保留 "/",把空格 / # / ) 等编码掉,确保链接目标不会被 Markdown 截断。
+    encoded = quote(relative)
+    return f"{encoded}#L{line}"
+
+
+def _location_link(file: str, line: int, repo_path: str, report_dir: str) -> str:
     """把 file+line 渲染成可点击的 Markdown 链接。
 
-    链接文本为 `file:line`,目标为仓库内相对路径 + 行号锚点约定 `file#Lline`
-    (GitHub/GitLab 等对行号锚点的通用写法)。空格等特殊字符做最小转义。
+    链接文本为 `file:line`;目标由 _link_target 算出,是从报告文件出发、指向真实
+    源码文件的相对路径 + 行号锚点。目标用尖括号 `<...>` 包裹,即使路径含已编码的
+    特殊字符也不会破坏 Markdown 链接语法。
     """
-    target = f"{file.replace(' ', '%20')}#L{line}"
-    return f"[{file}:{line}]({target})"
+    target = _link_target(file, line, repo_path, report_dir)
+    return f"[{file}:{line}](<{target}>)"
 
 
-def _render_locations(finding: Finding) -> list[str]:
+def _render_locations(finding: Finding, repo_path: str, report_dir: str) -> list[str]:
     """位置列表:每条渲染成可点击的 Markdown 链接 + 节点 id。"""
     lines = ["**Locations:**", ""]
     locations = finding["locations"]
@@ -132,7 +153,7 @@ def _render_locations(finding: Finding) -> list[str]:
         return lines
 
     for location in locations:
-        link = _location_link(location["file"], location["line"])
+        link = _location_link(location["file"], location["line"], repo_path, report_dir)
         node_id = location.get("node_id", "")
         if node_id:
             lines.append(f"- {link} (node: `{node_id}`)")
@@ -142,7 +163,7 @@ def _render_locations(finding: Finding) -> list[str]:
     return lines
 
 
-def _render_finding(finding: Finding, index: int) -> list[str]:
+def _render_finding(finding: Finding, index: int, repo_path: str, report_dir: str) -> list[str]:
     """渲染单条 finding:标题 + 徽章 + 元数据 + 位置 + 数据流 / 依据 / 证据 / 修复。"""
     severity = _severity_label(_as_str(finding["severity"]))
     confidence = _as_str(finding["confidence"]).strip().title() or "Unknown"
@@ -157,7 +178,7 @@ def _render_finding(finding: Finding, index: int) -> list[str]:
         f"- **ID:** `{finding['id']}`",
         "",
     ]
-    lines.extend(_render_locations(finding))
+    lines.extend(_render_locations(finding, repo_path, report_dir))
 
     data_flow = finding["data_flow"].strip()
     if data_flow:
@@ -184,12 +205,16 @@ def render_report(findings: list[Finding], state: ArgusState) -> str:
     全局连续编号;每条渲染标题、severity/confidence、vuln_class、analyzer、
     locations(可点击 Markdown 链接)、data_flow、rationale、evidence、remediation。
     findings 为空时返回一份合法的 "未发现漏洞" 报告。severity/confidence 同时兼容
-    枚举与字符串。
+    枚举与字符串。位置链接以报告落盘目录(report_path 所在目录)为基准,解析到
+    repo_path 下的真实源码文件。
     """
     lines = _render_header(findings, state)
 
     if not findings:
         return "\n".join(lines).rstrip() + "\n"
+
+    repo_path = state["repo_path"]
+    report_dir = os.path.dirname(state["report_path"])
 
     lines.extend(["## Findings", ""])
 
@@ -199,6 +224,6 @@ def render_report(findings: list[Finding], state: ArgusState) -> str:
         lines.extend([f"### {_severity_label(severity)}", ""])
         for finding in groups[severity]:
             index += 1
-            lines.extend(_render_finding(finding, index))
+            lines.extend(_render_finding(finding, index, repo_path, report_dir))
 
     return "\n".join(lines).rstrip() + "\n"
