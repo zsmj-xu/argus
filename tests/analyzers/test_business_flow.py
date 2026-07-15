@@ -104,6 +104,114 @@ def _ctx(llm_text: str) -> AnalysisContext:
     }
 
 
+def _ctx_with_graph(graph: Any, llm_text: str) -> AnalysisContext:
+    """像 _ctx,但注入一个自定义 GraphHandle(用于跨文件同名/调用边测试)。"""
+    return {
+        "graph": graph,
+        "enriched": {},
+        "source": _FakeSource(),
+        "config": {},
+        "llm": _FakeLLM(llm_text),
+        "workspace": "bf-test",
+    }
+
+
+class _RecordingGraph:
+    """记录 callers/callees 查询的最小 GraphHandle;list_orders 调用 get_order。"""
+
+    def __init__(self) -> None:
+        self.nodes: list[dict[str, Any]] = [
+            {
+                "id": "api/orders.py::list_orders",
+                "kind": "function",
+                "name": "list_orders",
+                "qualified_name": "api.orders.list_orders",
+                "file_path": "api/orders.py",
+                "start_line": 10,
+                "end_line": 20,
+                "signature": "def list_orders()",
+            },
+            {
+                "id": "api/orders.py::get_order",
+                "kind": "function",
+                "name": "get_order",
+                "qualified_name": "api.orders.get_order",
+                "file_path": "api/orders.py",
+                "start_line": 22,
+                "end_line": 30,
+                "signature": "def get_order(order_id)",
+            },
+        ]
+        self.callee_calls: list[str] = []
+        self.caller_calls: list[str] = []
+
+    def query(self, search: str) -> list[dict[str, Any]]:
+        assert search == ""
+        return list(self.nodes)
+
+    def node(self, node_id: str) -> dict[str, Any] | None:
+        return next((n for n in self.nodes if n["id"] == node_id), None)
+
+    def callees(self, symbol: str) -> list[dict[str, Any]]:
+        self.callee_calls.append(symbol)
+        if symbol == "api/orders.py::list_orders":
+            return [self.nodes[1]]
+        return []
+
+    def callers(self, symbol: str) -> list[dict[str, Any]]:
+        self.caller_calls.append(symbol)
+        if symbol == "api/orders.py::get_order":
+            return [self.nodes[0]]
+        return []
+
+    def explore(self, query: str) -> str:
+        return query
+
+
+class _TwoHandlerGraph:
+    """两个跨文件同名 `handler` 节点(a.py / b.py),用于 node_id 消歧测试。"""
+
+    def __init__(self) -> None:
+        self.nodes: list[dict[str, Any]] = [
+            {
+                "id": "a.py::handler",
+                "kind": "function",
+                "name": "handler",
+                "qualified_name": "a.handler",
+                "file_path": "a.py",
+                "start_line": 5,
+                "end_line": 15,
+            },
+            {
+                "id": "b.py::handler",
+                "kind": "function",
+                "name": "handler",
+                "qualified_name": "b.handler",
+                "file_path": "b.py",
+                "start_line": 5,
+                "end_line": 15,
+            },
+        ]
+
+    def query(self, search: str) -> list[dict[str, Any]]:
+        assert search == ""
+        return list(self.nodes)
+
+    def node(self, node_id: str) -> dict[str, Any] | None:
+        return next((n for n in self.nodes if n["id"] == node_id), None)
+
+    def callers(self, symbol: str) -> list[dict[str, Any]]:
+        del symbol
+        return []
+
+    def callees(self, symbol: str) -> list[dict[str, Any]]:
+        del symbol
+        return []
+
+    def explore(self, query: str) -> str:
+        return query
+
+
 def test_analyzer_metadata() -> None:
     assert ANALYZER.name == "business-flow"
     assert ANALYZER.phase == Phase.ENRICHMENT
@@ -191,3 +299,207 @@ def test_llm_actually_invoked_with_prompt() -> None:
     call = llm.calls[0]
     assert call["system"]
     assert call["prompt"]
+
+
+# === 修复2:段内非法条目规整(逐条丢弃非 dict,业务流校验必需字段) ===
+
+
+def test_illegal_entries_dropped_all_sections_stay_lists() -> None:
+    """LLM 每段都混入非法条目;规整后非法条目被丢弃、合法条目保留、每段仍是 list。"""
+    payload: dict[str, Any] = {
+        "endpoints": ["not-an-object", {"id": "ep-x", "method": "GET", "path": "/x"}],
+        "handlers": [42, {"id": "h-x", "name": "login"}],
+        "resources": [None, {"id": "r-x", "name": "Order"}],
+        "operations": ["bad", {"id": "op-x", "verb": "read", "target_resource": "Order"}],
+        "edges": ["bad-edge", {"from": "ep-x", "rel": "handled_by", "to": "h-x"}],
+        "business_flows": [
+            "not-an-object",
+            {"endpoint_id": "ep-x", "intent": "读取订单"},
+        ],
+    }
+    enrichment = ANALYZER.run(_ctx(_fenced(payload)))["enrichment"]
+
+    for section in ("endpoints", "handlers", "resources", "operations", "edges", "business_flows"):
+        assert isinstance(enrichment[section], list)
+        assert all(isinstance(item, dict) for item in enrichment[section]), f"{section} 残留非 dict"
+
+    assert len(enrichment["endpoints"]) == 1
+    assert len(enrichment["handlers"]) == 1
+    assert len(enrichment["resources"]) == 1
+    assert len(enrichment["operations"]) == 1
+    assert len(enrichment["edges"]) == 1
+    assert len(enrichment["business_flows"]) == 1
+    assert enrichment["business_flows"][0]["endpoint_id"] == "ep-x"
+
+
+def test_business_flow_missing_required_fields_dropped() -> None:
+    """business_flows 缺 endpoint_id 或 intent 的条目被丢弃。"""
+    payload: dict[str, Any] = {
+        "business_flows": [
+            {"intent": "缺 endpoint_id"},
+            {"endpoint_id": "ep-y"},
+            {"endpoint_id": "ep-ok", "intent": "两者都在"},
+        ],
+    }
+    flows = ANALYZER.run(_ctx(_fenced(payload)))["enrichment"]["business_flows"]
+    assert len(flows) == 1
+    assert flows[0]["endpoint_id"] == "ep-ok"
+
+
+def test_business_flow_trust_boundaries_non_dict_dropped() -> None:
+    """trust_boundaries 非 list 时置空;list 内非 dict 条目被丢弃。"""
+    payload: dict[str, Any] = {
+        "business_flows": [
+            {
+                "endpoint_id": "ep-a",
+                "intent": "a",
+                "trust_boundaries": "not-a-list",
+            },
+            {
+                "endpoint_id": "ep-b",
+                "intent": "b",
+                "trust_boundaries": ["bad", {"field": "amount", "source": "request_body", "validated": False}],
+            },
+        ],
+    }
+    flows = ANALYZER.run(_ctx(_fenced(payload)))["enrichment"]["business_flows"]
+    by_id = {f["endpoint_id"]: f for f in flows}
+    assert by_id["ep-a"]["trust_boundaries"] == []
+    assert len(by_id["ep-b"]["trust_boundaries"]) == 1
+    assert by_id["ep-b"]["trust_boundaries"][0]["field"] == "amount"
+
+
+# === 修复3:node_id 消歧(跨文件同名) ===
+
+
+def test_handler_disambiguated_by_source_ref() -> None:
+    """两个跨文件同名 handler;LLM 未给 node_id 但给了 b.py 的 source_ref,应锚到 b.py。"""
+    graph = _TwoHandlerGraph()
+    payload: dict[str, Any] = {
+        "handlers": [{"id": "h-1", "name": "handler", "source_ref": "b.py:10"}],
+    }
+    enrichment = ANALYZER.run(_ctx_with_graph(graph, _fenced(payload)))["enrichment"]
+    assert enrichment["handlers"][0]["node_id"] == "b.py::handler"
+
+
+def test_handler_ambiguous_name_yields_none_node_id() -> None:
+    """同名跨文件且无任何消歧信息时,node_id 应为 None(不瞎猜取首个)。"""
+    graph = _TwoHandlerGraph()
+    payload: dict[str, Any] = {
+        "handlers": [{"id": "h-1", "name": "handler"}],
+    }
+    enrichment = ANALYZER.run(_ctx_with_graph(graph, _fenced(payload)))["enrichment"]
+    assert enrichment["handlers"][0]["node_id"] is None
+
+
+def test_handler_provided_node_id_must_exist() -> None:
+    """LLM 给的 node_id 不在图中时不采信,回落到消歧;无法消歧则 None。"""
+    graph = _TwoHandlerGraph()
+    payload: dict[str, Any] = {
+        "handlers": [{"id": "h-1", "name": "handler", "node_id": "c.py::handler"}],
+    }
+    enrichment = ANALYZER.run(_ctx_with_graph(graph, _fenced(payload)))["enrichment"]
+    assert enrichment["handlers"][0]["node_id"] is None
+
+
+def test_endpoint_inherits_disambiguated_handler_node_id() -> None:
+    """endpoint 经 handled_by 边继承已消歧的 handler node_id。"""
+    graph = _TwoHandlerGraph()
+    payload: dict[str, Any] = {
+        "endpoints": [{"id": "ep-1", "method": "GET", "path": "/x"}],
+        "handlers": [{"id": "h-1", "name": "handler", "source_ref": "b.py:10"}],
+        "edges": [{"from": "ep-1", "rel": "handled_by", "to": "h-1"}],
+    }
+    enrichment = ANALYZER.run(_ctx_with_graph(graph, _fenced(payload)))["enrichment"]
+    assert enrichment["endpoints"][0]["node_id"] == "b.py::handler"
+
+
+# === 修复1:骨架发调用边 ===
+
+
+def test_call_edges_queried_and_included_in_prompt() -> None:
+    """骨架构建应查询 callers/callees,并把调用关系写进 prompt。"""
+    graph = _RecordingGraph()
+    ctx = _ctx_with_graph(graph, _fenced(_LLM_GRAPH))
+    ANALYZER.run(ctx)
+
+    # callees/callers 都被查询过。
+    assert "api/orders.py::list_orders" in graph.callee_calls
+    assert graph.caller_calls  # callers 也被查询
+
+    llm = ctx["llm"]
+    assert isinstance(llm, _FakeLLM)
+    prompt = llm.calls[0]["prompt"]
+    # prompt 里出现"谁调用谁"的信息:list_orders -> get_order。
+    assert "list_orders" in prompt
+    assert "get_order" in prompt
+    # 调用关系以结构化形式进入 prompt(callees/calls 字样之一)。
+    assert "callees" in prompt or "calls" in prompt
+
+
+# === 修复4:business_flows 可选扩展字段 ===
+
+
+def test_business_flow_new_fields_normalized() -> None:
+    """LLM 产出新扩展字段时被正确规整进 business_flows。"""
+    payload: dict[str, Any] = {
+        "business_flows": [
+            {
+                "endpoint_id": "ep-refund",
+                "intent": "退款",
+                "related_endpoint_ids": ["ep-order", "ep-pay"],
+                "actors": ["buyer"],
+                "authorization_requirements": ["must own order"],
+                "state_reads": ["order.status"],
+                "state_writes": ["order.refunded"],
+                "state_transitions": [{"from": "paid", "to": "refunded"}],
+                "side_effects": ["refund money"],
+                "replay_guards": ["idempotency_key"],
+            }
+        ],
+    }
+    flow = ANALYZER.run(_ctx(_fenced(payload)))["enrichment"]["business_flows"][0]
+    assert flow["related_endpoint_ids"] == ["ep-order", "ep-pay"]
+    assert flow["actors"] == ["buyer"]
+    assert flow["authorization_requirements"] == ["must own order"]
+    assert flow["state_reads"] == ["order.status"]
+    assert flow["state_writes"] == ["order.refunded"]
+    assert flow["state_transitions"] == [{"from": "paid", "to": "refunded"}]
+    assert flow["side_effects"] == ["refund money"]
+    assert flow["replay_guards"] == ["idempotency_key"]
+
+
+def test_business_flow_new_fields_default_empty_when_absent() -> None:
+    """LLM 不产新字段时,规整后缺省为空 list(向后兼容)。"""
+    flow = ANALYZER.run(_ctx(_fenced(_LLM_GRAPH)))["enrichment"]["business_flows"][0]
+    for field in (
+        "related_endpoint_ids",
+        "actors",
+        "authorization_requirements",
+        "state_reads",
+        "state_writes",
+        "state_transitions",
+        "side_effects",
+        "replay_guards",
+    ):
+        assert flow[field] == [], f"{field} 应缺省为空 list"
+
+
+def test_business_flow_new_fields_wrong_type_defaults_empty() -> None:
+    """新字段类型不对(非 list)时缺省为空 list,list 内非法项按需过滤。"""
+    payload: dict[str, Any] = {
+        "business_flows": [
+            {
+                "endpoint_id": "ep-z",
+                "intent": "z",
+                "related_endpoint_ids": "not-a-list",
+                "actors": None,
+                "side_effects": ["ok", 123],
+            }
+        ],
+    }
+    flow = ANALYZER.run(_ctx(_fenced(payload)))["enrichment"]["business_flows"][0]
+    assert flow["related_endpoint_ids"] == []
+    assert flow["actors"] == []
+    # str list 段过滤掉非字符串项。
+    assert flow["side_effects"] == ["ok"]
