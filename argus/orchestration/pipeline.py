@@ -39,6 +39,7 @@ from argus.orchestration.checkpoints import (
     review_enrichment,
     review_findings,
 )
+from argus.reporting.report import render_report
 
 # 节点名常量(与 completed_nodes 里记录的名字一致)。
 NODE_BUILD_GRAPH = "build_graph"
@@ -158,31 +159,13 @@ def build_graph_node(state: ArgusState) -> dict[str, Any]:
 
 
 def report_node(state: ArgusState) -> dict[str, Any]:
-    """报告节点:M1 写占位 markdown 到 runs/<ws>/report.md。"""
+    """报告节点:把 findings 确定性渲染为 markdown 并写到 runs/<ws>/report.md。"""
     report_path = state["report_path"]
     os.makedirs(os.path.dirname(report_path), exist_ok=True)
 
-    finding_count = len(state["findings"])
-    lines = [
-        f"# Argus Report — {state['workspace']}",
-        "",
-        f"- Repository: `{state['repo_path']}`",
-        f"- Graph DB: `{state['graph_db_path']}`",
-        f"- Source mode: `{state['source_mode'].value}`",
-        f"- Findings: {finding_count}",
-        "",
-        "## Findings",
-        "",
-    ]
-    if finding_count == 0:
-        lines.append("_No findings (M1 placeholder report)._")
-    else:
-        for finding in state["findings"]:
-            lines.append(f"- **{finding['title']}** ({finding['severity'].value}) — {finding['vuln_class']}")
-    lines.append("")
-
+    markdown = render_report(state["findings"], state)
     with open(report_path, "w", encoding="utf-8") as handle:
-        handle.write("\n".join(lines))
+        handle.write(markdown)
 
     return {"completed_nodes": [*state["completed_nodes"], NODE_REPORT]}
 
