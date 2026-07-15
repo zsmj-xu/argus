@@ -62,12 +62,16 @@
 | T10 | 命令行参数注入 --set/--focus | claude | T09 | M3 | pending |
 | T11 | 改产物文件后 continue | claude | T09 | M3 | pending |
 | T12 | business-flow 富化器 | claude | T05 | M4 | done⚠️(回审完成,待修复) |
-| T13 | business-logic 漏洞分析器 | codex | T12 | M4 | pending |
+| **T12F** | **business-flow 修复(回审 4 项:调用边/段内规整/node_id 消歧/schema 扩展)** | **claude** | **T12** | **M4** | **in_progress** |
+| T07F | 报告 Markdown 链接小修(回审 1 项) | claude | T07 | M2 | pending |
+| T13 | business-logic 漏洞分析器 | codex | **T12F** | M4 | pending |
 | T14 | invariant 富化器(实验性) | codex | T12 | M4 | pending |
 | T15 | 靶场资产导入 | codex | T05 | M5 | pending |
 | T16 | 评测打分 | codex | T15 | M5 | pending |
 | T17 | 图组/无图组对照 + 基线 | codex | T16 | M5 | pending |
 | T18 | 端到端对照实验 | claude | T13,T14,T17 | M5 | pending |
+
+> **T13 依赖已从 T12 改为 T12F**:business-flow 的回审缺陷(段内非法条目不丢弃、同名 node_id 锚错、缺跨 handler 调用边/状态字段)会直接绊到 T13。**codex 请等 T12F 合并后再开 T13。** T14(invariant)不依赖这些,可照旧。
 
 ---
 
