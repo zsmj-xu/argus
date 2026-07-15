@@ -24,6 +24,39 @@ uv run --extra dev mypy argus/ && uv run --extra dev ruff check . && uv run --ex
 
 ## 评审结论(Codex 填写)
 
-> 两个裁决(Spec ✅/❌ + Quality Approved/需修改)+ 分级 findings。
+**评审方式**:独立子智能体在隔离 worktree 中只读检出 `claude/T07F`
+(`86d2c83`,base `fb47a59`),通读实现与测试并执行全部四条质量门。
 
-（待 Codex 填写）
+**裁决**:
+
+- Spec ❌
+- Quality:需修改
+
+### Important(阻断合并)
+
+1. `argus/reporting/report.py:115-122` 生成的目标是 `file#Lline`,但报告实际写在
+   `runs/<workspace>/report.md`。Markdown 相对链接会从报告所在目录解析,因此点击后会
+   寻找 `runs/<workspace>/file`,而不是 `state["repo_path"]/file`,无法满足“点击跳到
+   真实源码位置”的修复目标。链接目标应根据 `state["repo_path"]` 与
+   `dirname(state["report_path"])` 计算,再进行适合 Markdown URL 的编码。
+2. `tests/test_report.py:170` 只断言生成的 Markdown 字面量,没有把链接相对
+   `report_path` 解析后验证其确实落到仓库里的目标源码文件,所以未捕获上述错误。
+
+### Minor
+
+- 当前只替换空格不足以构造稳健链接:路径中的 `#` 会被解释为 fragment,未配对的 `)`
+  可能截断 Markdown 目标;绝对路径在部分 Web 渲染器中也可能被当作站点根路径。建议用
+  标准 URL 编码处理路径部分,并单独保留 `#L<line>` fragment。
+
+### 已确认通过
+
+- evidence 动态围栏能覆盖内容中的连续反引号。
+- Finding 编号跨 severity 分组保持全局连续且稳定。
+- 改动范围仅限 `report.py` 与 `test_report.py`,未触碰 pipeline 或冻结契约。
+- `uv run --extra dev pytest tests/test_report.py -q`:9 passed。
+- `uv run --extra dev pytest -q`:51 passed。
+- mypy、ruff check、ruff format 四条质量门全绿。
+- 与评审时的当前 `main` 未发现合并冲突。
+
+**结论**:暂不合并。请修正源码链接的解析基准与编码,补一个从 `report_path` 实际解析
+到 `repo_path` 下目标文件的测试后提交第二轮复审。
