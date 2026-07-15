@@ -95,8 +95,35 @@ def _render_header(findings: list[Finding], state: ArgusState) -> list[str]:
     return lines
 
 
+def _code_fence(content: str) -> str:
+    """为代码块选一个足够长的反引号围栏。
+
+    默认三反引号;若内容自身含连续反引号(会提前闭合围栏),则用比内容里
+    最长反引号串再多一个的围栏,保证正确包裹。
+    """
+    longest_run = 0
+    current_run = 0
+    for char in content:
+        if char == "`":
+            current_run += 1
+            longest_run = max(longest_run, current_run)
+        else:
+            current_run = 0
+    return "`" * max(3, longest_run + 1)
+
+
+def _location_link(file: str, line: int) -> str:
+    """把 file+line 渲染成可点击的 Markdown 链接。
+
+    链接文本为 `file:line`,目标为仓库内相对路径 + 行号锚点约定 `file#Lline`
+    (GitHub/GitLab 等对行号锚点的通用写法)。空格等特殊字符做最小转义。
+    """
+    target = f"{file.replace(' ', '%20')}#L{line}"
+    return f"[{file}:{line}]({target})"
+
+
 def _render_locations(finding: Finding) -> list[str]:
-    """位置列表:每条渲染成可点击的 `file:line` 加节点 id。"""
+    """位置列表:每条渲染成可点击的 Markdown 链接 + 节点 id。"""
     lines = ["**Locations:**", ""]
     locations = finding["locations"]
     if not locations:
@@ -105,12 +132,12 @@ def _render_locations(finding: Finding) -> list[str]:
         return lines
 
     for location in locations:
-        anchor = f"`{location['file']}:{location['line']}`"
+        link = _location_link(location["file"], location["line"])
         node_id = location.get("node_id", "")
         if node_id:
-            lines.append(f"- {anchor} (node: `{node_id}`)")
+            lines.append(f"- {link} (node: `{node_id}`)")
         else:
-            lines.append(f"- {anchor}")
+            lines.append(f"- {link}")
     lines.append("")
     return lines
 
@@ -141,7 +168,8 @@ def _render_finding(finding: Finding, index: int) -> list[str]:
 
     evidence = finding["evidence"].strip()
     if evidence:
-        lines.extend(["**Evidence:**", "", "```", evidence, "```", ""])
+        fence = _code_fence(evidence)
+        lines.extend(["**Evidence:**", "", fence, evidence, fence, ""])
 
     remediation = finding["remediation"].strip()
     lines.extend(["**Remediation:**", "", remediation or "_Not provided._", ""])
@@ -152,10 +180,11 @@ def _render_finding(finding: Finding, index: int) -> list[str]:
 def render_report(findings: list[Finding], state: ArgusState) -> str:
     """把 findings 渲染成 markdown 安全报告。
 
-    findings 按严重度降序(critical → high → medium → low → info)分组;每条渲染
-    标题、severity/confidence、vuln_class、analyzer、locations(`file:line`)、
-    data_flow、rationale、evidence、remediation。findings 为空时返回一份合法的
-    "未发现漏洞" 报告。severity/confidence 同时兼容枚举与字符串。
+    findings 按严重度降序(critical → high → medium → low → info)分组,并跨分组
+    全局连续编号;每条渲染标题、severity/confidence、vuln_class、analyzer、
+    locations(可点击 Markdown 链接)、data_flow、rationale、evidence、remediation。
+    findings 为空时返回一份合法的 "未发现漏洞" 报告。severity/confidence 同时兼容
+    枚举与字符串。
     """
     lines = _render_header(findings, state)
 
@@ -165,9 +194,11 @@ def render_report(findings: list[Finding], state: ArgusState) -> str:
     lines.extend(["## Findings", ""])
 
     groups = _group_by_severity(findings)
+    index = 0
     for severity in _ordered_severities(groups):
         lines.extend([f"### {_severity_label(severity)}", ""])
-        for index, finding in enumerate(groups[severity], start=1):
+        for finding in groups[severity]:
+            index += 1
             lines.extend(_render_finding(finding, index))
 
     return "\n".join(lines).rstrip() + "\n"

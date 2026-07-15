@@ -81,7 +81,8 @@ def test_report_groups_by_severity_and_links_nodes() -> None:
     md = render_report(findings, _state(repo_path="/x", workspace="w"))
     assert "# " in md
     assert "high" in md.lower()
-    assert "api/o.py:10" in md
+    # 位置必须是可点击的 Markdown 链接,而非纯反引号代码文本。
+    assert "[api/o.py:10](api/o.py#L10)" in md
 
 
 def test_empty_findings_renders_valid_report() -> None:
@@ -157,9 +158,48 @@ def test_all_finding_fields_rendered() -> None:
     md = render_report(findings, _state())
     assert "SQLi in login" in md
     assert "injection" in md
-    assert "app/db.py:42" in md
-    assert "app/views.py:7" in md
+    # 两条位置都渲染成可点击 Markdown 链接。
+    assert "[app/db.py:42](app/db.py#L42)" in md
+    assert "[app/views.py:7](app/views.py#L7)" in md
     assert "request.form -> query()" in md
     assert "unsanitized input reaches SQL" in md
     assert "cursor.execute" in md
     assert "use parameterized queries" in md
+
+
+def test_locations_render_as_clickable_markdown_links() -> None:
+    """位置必须是 Markdown 链接 [file:line](file#Lline),不是纯反引号代码文本。"""
+    findings = [
+        _finding(fid="lnk", locations=[{"file": "src/pay.py", "line": 88, "node_id": "n1"}]),
+    ]
+    md = render_report(findings, _state())
+    assert "[src/pay.py:88](src/pay.py#L88)" in md
+    # 不应再是旧的纯反引号写法。
+    assert "`src/pay.py:88`" not in md
+
+
+def test_evidence_fence_escapes_embedded_backticks() -> None:
+    """evidence 自身含 ``` 时,围栏必须更长以免提前闭合。"""
+    evidence_with_fence = "before\n```\ninner code\n```\nafter"
+    findings = [_finding(fid="ev", evidence=evidence_with_fence)]
+    md = render_report(findings, _state())
+    # evidence 全文完整保留,内部的三反引号没有把外层围栏提前截断。
+    assert "inner code" in md
+    assert "before" in md
+    assert "after" in md
+    # 外层围栏至少 4 个反引号(比内容里最长的 3 连反引号多一个)。
+    assert "````" in md
+
+
+def test_finding_numbering_is_globally_unique() -> None:
+    """finding 编号跨 severity 分组全局连续,而非每组从 1 重开。"""
+    findings = [
+        _finding(fid="c1", title="CritOne", severity=Severity.CRITICAL),
+        _finding(fid="h1", title="HighOne", severity=Severity.HIGH),
+        _finding(fid="h2", title="HighTwo", severity=Severity.HIGH),
+    ]
+    md = render_report(findings, _state())
+    # 三条 finding 应编号 1、2、3(而不是 critical 组 1、high 组 1、2)。
+    assert "#### 1. CritOne" in md
+    assert "#### 2. HighOne" in md
+    assert "#### 3. HighTwo" in md
