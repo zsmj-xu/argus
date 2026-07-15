@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import sqlite3
 import subprocess
@@ -29,10 +30,15 @@ class CodegraphHandle:
     """codegraph.db 的只读句柄。构造只记录路径,每次查询开一个短连接。"""
 
     def __init__(self, db_path: str) -> None:
+        # db 不存在时立即报错。否则 sqlite3.connect 会静默建一个空 db,
+        # 后续 query 只会抛出误导性的 "no such table: nodes"。
+        if not os.path.exists(db_path):
+            raise FileNotFoundError(f"codegraph db not found: {db_path}")
         self.db_path = db_path
 
     def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
+        # 只读 URI 模式:句柄本身只读,且杜绝对已被删除的 db 静默重建。
+        conn = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True)
         conn.row_factory = sqlite3.Row
         return conn
 

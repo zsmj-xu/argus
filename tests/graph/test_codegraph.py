@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import os
 
+import pytest
+
 from argus.contracts import GraphHandle
 from argus.graph.codegraph import CodegraphHandle
 
@@ -76,3 +78,14 @@ def test_explore_returns_str() -> None:
 
 def test_satisfies_graphhandle_protocol() -> None:
     assert isinstance(_handle(), GraphHandle)
+
+
+def test_missing_db_raises_clear_error_without_creating_file(tmp_path: object) -> None:
+    """db 不存在时应抛清晰错误,且不在磁盘上留下空文件。"""
+    missing = os.path.join(str(tmp_path), "does-not-exist.db")
+    assert not os.path.exists(missing)
+
+    with pytest.raises(FileNotFoundError, match="codegraph db not found"):
+        CodegraphHandle(missing)
+
+    assert not os.path.exists(missing), "不存在的 db 路径不应被静默创建"
