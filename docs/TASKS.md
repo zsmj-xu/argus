@@ -65,7 +65,7 @@
 | **T12F** | **business-flow 修复(回审 4 项:调用边/段内规整/node_id 消歧/schema 扩展)** | **claude** | **T12** | **M4** | **review❌(Codex 要求修改)** |
 | T07F | 报告 Markdown 链接小修(回审 1 项) | claude | T07 | M2 | pending |
 | T13 | business-logic 漏洞分析器 | codex | **T12F** | M4 | pending |
-| T14 | invariant 富化器(实验性) | codex | T12 | M4 | pending |
+| T14 | invariant 富化器(实验性) | codex | T12 | M4 | in_progress |
 | T15 | 靶场资产导入 | codex | T05 | M5 | pending |
 | T16 | 评测打分 | codex | T15 | M5 | pending |
 | T17 | 图组/无图组对照 + 基线 | codex | T16 | M5 | pending |
