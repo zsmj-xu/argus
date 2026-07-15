@@ -10,7 +10,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11"]
+dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11", "types-PyYAML>=6"]
 
 [project.scripts]
 argus = "argus.cli:main"
