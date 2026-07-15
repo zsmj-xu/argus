@@ -15,6 +15,11 @@ def test_phase_values():
 
 def test_analyzer_is_runtime_checkable():
     class Dummy:
-        name = "d"; phase = c.Phase.VULN_ANALYSIS; requires = []
-        def run(self, ctx): return {"analyzer":"d","findings":[],"enrichment":{}}
+        name = "d"
+        phase = c.Phase.VULN_ANALYSIS
+        requires: list[str] = []
+
+        def run(self, ctx):
+            return {"analyzer": "d", "findings": [], "enrichment": {}}
+
     assert isinstance(Dummy(), c.Analyzer)
