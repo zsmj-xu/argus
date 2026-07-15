@@ -22,17 +22,29 @@
 
 ---
 
-## 阶段 A —— 地基(Claude 独做,合并进 main 前 Codex 不写实现)
+## 阶段 A —— 地基(Claude 独做,已完成并合并进 main ✅)
 
 | Task | 标题 | 归属 | 依赖 | 里程碑 | 状态 |
 |---|---|---|---|---|---|
-| T01 | 项目脚手架与工具链 | claude | — | M1 | pending |
-| T02 | 契约层落地 | claude | T01 | M1 | pending |
-| T03 | GraphHandle codegraph 封装 | claude | T02 | M1 | pending |
-| T04 | 配置解析 + 审计型 LLM | claude | T02 | M1 | pending |
-| T05 | 注册表+编排+checkpoint+CLI 壳 | claude | T03,T04 | M1 | pending |
+| T01 | 项目脚手架与工具链 | claude | — | M1 | ✅ done |
+| T02 | 契约层落地 | claude | T01 | M1 | ✅ done |
+| T03 | GraphHandle codegraph 封装 | claude | T02 | M1 | ✅ done |
+| T04 | 配置解析 + 审计型 LLM | claude | T02 | M1 | ✅ done |
+| T05 | 注册表+编排+checkpoint+CLI 壳 | claude | T03,T04 | M1 | ✅ done |
 
-**阶段 A 出口**:T05 合并进 `main`。M1 验收(见计划 T05 Step 6)通过。
+**阶段 A 出口**:✅ M1 已合并进 `main`(merge commit `785204d`)。真实 VAmPI + codegraph 冒烟通过;26 测试绿、mypy strict clean、ruff check+format 绿。**阶段 B 现已开放,Codex 可以开始领取任务。**
+
+### 环境说明(开工必读)
+- 系统 Python 是 3.9,**必须用 uv**:`uv venv --python 3.11 && uv pip install -e ".[dev]"`,一切命令走 `uv run ...`(如 `uv run pytest -q`)。
+- 质量门 4 条都要绿:`uv run pytest -q`、`uv run mypy argus/`、`uv run ruff check .`、`uv run ruff format --check .`。ruff 已 pin 到 `0.15.21`,别升级。
+- 目录布局:仓库根有 `pyproject.toml`,Python 包是根下的 `argus/`,测试在根下的 `tests/`。计划里写的 `argus/argus/...` 指的就是 `<repo>/argus/...`。
+
+### 地基给后续任务的注意事项(最终评审留下,务必读)
+1. **Finding 里的 `severity`/`confidence` 是枚举**(`Severity`/`Confidence`),已登记进 checkpoint 序列化 allowlist(`argus/orchestration/checkpoints.py`)。构造 Finding 时用枚举而非裸字符串;若给 ArgusState/Finding 新增其它自定义类型,需同步扩 `_ALLOWED_MSGPACK_MODULES`。
+2. **每个分析器目录 `argus/analyzers/<name>/analyzer.py` 必须导出一个模块级 `ANALYZER` 实例**(注册表靠这个发现)。analyzer.py 内部若 import 失败,注册表会**抛错**(不再静默吞掉),方便你 debug。
+3. **当前分析器在 phase 内串行 for-loop 执行,不是 per-analyzer 的 LangGraph 节点**(T05 按计划的简化)。所以暂时没有 per-analyzer 的并行/独立 checkpoint。若要引入真正并行的分析器节点,`completed_nodes`/`findings`/`enriched` 需要加 reducer(`Annotated[list, operator.add]`)——**那是契约变更,须走契约变更流程**,别自己改。
+4. `requires` 字段目前未被拓扑排序真正消费(靠固定的 enrichment→vuln 边序偶然满足)。T13 的 business-logic 依赖 enriched-graph 由 phase 顺序满足。若你的分析器有跨 phase 的新依赖,先在看板提出。
+5. `AnalyzerBase`(`argus/analyzers/base.py`)提供 `_load_prompt()` 和 `_make_finding()`,写新分析器时继承它、复用这两个辅助,别各自造 Finding。
 
 ---
 
