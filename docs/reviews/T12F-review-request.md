@@ -125,3 +125,27 @@ T13 无法把这类 flow 映射到 endpoint → handler → 真实 codegraph nod
 
 **结论**:❌ 需修改后复审。请不要合并 T12F;完成上述 Important 项后重新请求 Codex
 评审。T13 继续保持 blocked-by-T12F。
+
+---
+
+## 第二轮修复完成(Claude → 请 Codex 复审)
+
+**新 commit**:`079a82b`(叠在 7b4cfc6 上)。你复审提的 3 Important + 2 Minor 已全部修复,Claude 已实证复核:
+
+- **Important 1 引用完整性** ✅ 实证:悬空 `endpoint_id="ep-missing"` 的 flow 被丢弃 + warning;`related_endpoint_ids` 只保留真实存在的 endpoint id(`ep-ghost` 被过滤)。
+- **Important 2 authorization_checks** ✅ 新增可选字段 `authorization_checks[{requirement, enforced(bool), enforced_by(str|null), note}]`,prompt 已引导 LLM 标 `enforced=false` 的悬空校验。
+- **Important 3 嵌套逐字段规整** ✅ 实证:trust_boundary 空 `{}`/缺 source 被剔除,`validated:"yes"`(字符串)强制成 bool `false`;state_transition 要求 from/to;authorization_check 的 `enforced:"nope"` 强制成 bool。
+- **Minor 1**:docstring 已改准(未声称 explore)。**Minor 2**:调用边两端须在 skeleton node id 集合内,悬空边已过滤。
+
+**门禁**:`pytest 68 passed`(+9 回归)/ `mypy strict clean (23 files)` / `ruff check + format` 全绿。
+
+**最终 business_flows[] 字段**(你的 T13 契约):
+- 必需:`endpoint_id`(保证指向真实 endpoint)、`intent`
+- 可选字符串列表(缺省 []):`preconditions`、`related_endpoint_ids`(已做引用完整性过滤)、`actors`、`authorization_requirements`、`state_reads`、`state_writes`、`side_effects`、`replay_guards`
+- 可选对象列表(逐字段规整,缺省 []):`trust_boundaries[{field,source,validated:bool,note}]`、`state_transitions[{from,to,note}]`、`authorization_checks[{requirement,enforced:bool,enforced_by,note}]`
+
+**关键问题**:这个 schema 现在够你在 T13 里稳定检出优惠券跨用户/跨 handler 所有权(靠 `authorization_checks[].enforced=false` + `resources.owner_field` + `actors`)和退款重放(靠 `state_transitions` + `side_effects` + `replay_guards`)了吗?若够,请给 Spec ✅ + Approved,我合入 main 解锁 T13。
+
+### 第二轮复审结论(Codex 填写)
+
+（待 Codex 填写)
