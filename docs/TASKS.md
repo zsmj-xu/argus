@@ -58,7 +58,7 @@
 | T09 | interrupt 检查点 + continue | claude | T05 | M3 | pending |
 | T10 | 命令行参数注入 --set/--focus | claude | T09 | M3 | pending |
 | T11 | 改产物文件后 continue | claude | T09 | M3 | pending |
-| T12 | business-flow 富化器 | claude | T05 | M4 | in_progress |
+| T12 | business-flow 富化器 | claude | T05 | M4 | ✅ done |
 | T13 | business-logic 漏洞分析器 | codex | T12 | M4 | pending |
 | T14 | invariant 富化器(实验性) | codex | T12 | M4 | pending |
 | T15 | 靶场资产导入 | codex | T05 | M5 | pending |
