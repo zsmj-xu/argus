@@ -2,7 +2,7 @@
 
 - start:建 workspace 目录 → build_graph → load_config → make_initial_state → 编译并 invoke 图。
 - resume:崩溃后用同 workspace 的 checkpointer 续跑;已完成节点(completed_nodes)不重跑。
-- continue:人看完检查点后主动放行 interrupt,推进图继续跑(--set / --focus 注入留待 T10)。
+- continue:人看完检查点后主动放行 interrupt,推进图继续跑,并把 --set / --focus 注入进 state.config。
 - stop:M1 骨架。
 - workspaces:列出 runs/ 下的 workspace。
 
@@ -12,6 +12,7 @@ pyproject entry point:argus.cli:main。
 from __future__ import annotations
 
 import argparse
+import copy
 import os
 import sys
 from typing import Any
@@ -87,14 +88,50 @@ def cmd_start(args: argparse.Namespace) -> int:
     return 0
 
 
-def _advance(workspace: str, resume_value: Any, action: str) -> int:
+def _inject_into_state(
+    app: Any,
+    cfg: dict[str, Any],
+    overrides: list[str],
+    focus: str | None,
+) -> None:
+    """把 continue 的 --set / --focus 合并进 checkpoint 持久化的 state.config。
+
+    读当前 state.config 深拷贝 → 用 apply_overrides 打 --set 点路径 → --focus 映射成
+    config["focus"] 键(分析器读 config.get("focus") 做 scope)→ update_state 写回 state。
+    写回后进入 checkpoint,故放行后执行的下游节点及后续 resume 都能读到合并后的 config。
+    无注入(空 overrides 且无 focus)时直接返回,不触碰 state。
+    """
+    from argus.config import apply_overrides
+
+    if not overrides and focus is None:
+        return
+
+    snapshot = app.get_state(cfg)
+    merged_config: dict[str, Any] = copy.deepcopy(snapshot.values["config"])
+
+    apply_overrides(merged_config, overrides)
+    if focus is not None:
+        # --focus <path> 等价于 --set focus=<path>:focus 是 config 的一个 scope 键。
+        merged_config["focus"] = focus
+
+    app.update_state(cfg, {"config": merged_config})
+
+
+def _advance(
+    workspace: str,
+    resume_value: Any,
+    action: str,
+    overrides: list[str] | None = None,
+    focus: str | None = None,
+) -> int:
     """resume / continue 共用的推进逻辑:把停下的图向前推。
 
     - 校验 checkpoint db 存在。
     - 图已完成(无 next)时报告即返回,不重跑。
+    - 有注入(--set / --focus)时,放行前先把注入合并进 state.config(见 _inject_into_state)。
     - 停在 interrupt 时:用 Command(resume=resume_value) 放行(本节点不重跑)。
     - 有待跑节点但不在 interrupt(如崩溃在节点中途)时:用 None 平推续跑。
-    action 仅用于日志,区分是 resume 还是 continue 触发。
+    action 仅用于日志,区分是 resume 还是 continue 触发。resume 不传注入;continue 可传。
     """
     db_path = os.path.join(workspace_dir(workspace, RUNS_ROOT), "state.db")
     if not os.path.exists(db_path):
@@ -111,6 +148,9 @@ def _advance(workspace: str, resume_value: Any, action: str) -> int:
         print(f"[argus] workspace {workspace!r} already complete; nothing to {action}")
         _report_result(dict(snapshot.values), workspace)
         return 0
+
+    # 放行前把 --set / --focus 注入合并进 state.config,让下游节点从 state 读到新值。
+    _inject_into_state(app, cfg, overrides or [], focus)
 
     # 停在 interrupt(检查点)时,Command(resume=...) 提供审阅结论并从检查点之后继续;
     # 否则(崩溃在节点中途)用 None 平推,让 LangGraph 从断点续跑。
@@ -135,9 +175,16 @@ def cmd_resume(args: argparse.Namespace) -> int:
 def cmd_continue(args: argparse.Namespace) -> int:
     """continue:人看完检查点后主动放行 interrupt,推进图继续跑。
 
-    T09 只做放行(送一个简单的审阅结论);--set / --focus 的参数注入留待 T10。
+    放行同时把 --set(点路径覆盖,可多次)/ --focus(聚焦路径)注入进 state.config,
+    让放行后执行的下游节点(vuln 等)及后续 resume 都读得到。
     """
-    return _advance(args.workspace, "approved", "continue")
+    return _advance(
+        args.workspace,
+        "approved",
+        "continue",
+        overrides=list(args.set or []),
+        focus=args.focus,
+    )
 
 
 def cmd_stop(_args: argparse.Namespace) -> int:
