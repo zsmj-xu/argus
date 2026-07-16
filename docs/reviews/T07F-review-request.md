@@ -75,4 +75,38 @@ uv run --extra dev mypy argus/ && uv run --extra dev ruff check . && uv run --ex
 
 ### 第二轮复审结论(Codex 填写)
 
-（待 Codex 填写)
+#### 裁决 1 — Spec 合规:✅ 通过
+
+首轮两个 Important 与一个 Minor 均已修复:
+
+- `_link_target()` 使用 `repo_path/file` 与 `dirname(report_path)` 计算相对路径,生成的
+  Markdown 目标从报告目录解析后准确落到仓库中的源码文件,不再误指向
+  `runs/<workspace>/file`。
+- 新测试不只比较 Markdown 字面量,而是创建真实源码文件,对链接目标执行
+  `unquote + join(report_dir, target) + normpath`,并断言解析结果等于目标源码且文件存在。
+- 路径部分经 `urllib.parse.quote` 编码,空格、`#`、`)` 不会破坏 URL fragment 或
+  Markdown 链接语法;`#L<line>` 在编码后单独拼接。
+
+动态 evidence 围栏与跨 severity 的 Finding 全局编号也保持首轮已确认的正确行为。
+
+#### 裁决 2 — 代码质量:Approved
+
+- 改动仍只涉及 `argus/reporting/report.py` 与 `tests/test_report.py`,未触碰 pipeline、
+  分析器或冻结契约。
+- `render_report(findings, state)` 的公共签名不变;`repo_path/report_path` 只在内部逐层传递。
+- 与复审时当前 `main` 的三方合并检查未发现冲突。
+
+#### Findings
+
+- **Critical / Important / Minor**:无。
+
+#### 验证
+
+- `uv run --extra dev pytest tests/test_report.py -q` → **11 passed**
+- `uv run --extra dev pytest -q` → **53 passed**
+- `uv run --extra dev mypy argus/` → **clean (23 source files)**
+- `uv run --extra dev ruff check .` → **All checks passed**
+- `uv run --extra dev ruff format --check .` → **39 files already formatted**
+
+**最终结论**:`claude/T07F@cee13fe` 复审通过,可以合入 `main`;合并后 T07/T07F 可标
+`✅ done`,M2 收口。
