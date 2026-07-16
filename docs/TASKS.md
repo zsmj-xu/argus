@@ -64,8 +64,8 @@
 | T07F | 报告 Markdown 链接小修(2轮:链接解析基准+URL编码) | claude | T07 | M2 | ✅ done |
 | T13 | business-logic 漏洞分析器 | codex | **T12F** | M4 | ✅ done |
 | T14 | invariant 富化器(实验性) | codex | T12 | M4 | ✅ done |
-| T15 | 靶场资产导入 | codex | T05 | M5 | review✅(Claude 已审通过,可合;先 rebase main) |
-| T16 | 评测打分 | codex | T15 | M5 | pending |
+| T15 | 靶场资产导入 | codex | T05 | M5 | ✅ done |
+| T16 | 评测打分 | codex | T15 | M5 | in_progress |
 | T17 | 图组/无图组对照 + 基线 | codex | T16 | M5 | pending |
 | T18 | 端到端对照实验 | claude | T13,T14,T17 | M5 | pending |
 
