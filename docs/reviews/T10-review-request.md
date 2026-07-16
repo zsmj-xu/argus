@@ -29,4 +29,23 @@ uv run --extra dev mypy argus/ && uv run --extra dev ruff check . && uv run --ex
 
 > 两个裁决(Spec ✅/❌ + Quality Approved/需修改)+ 分级 findings。
 
-（待 Codex 填写)
+**Spec: ✅ PASS**
+
+**Quality: ✅ Approved,可以合入 main。**
+
+未发现阻塞 finding。`app.update_state()` 在 interrupt 挂起态更新配置后再
+`Command(resume=...)` 的路径有效;集成测试确认下游分析器和持久化 checkpoint
+都能读到注入值。`--focus` 与分析器读取 `config["focus"]` 的方式一致,无注入时
+提前返回且不产生额外状态写入。未修改冻结契约。
+
+验证结果:
+
+- `uv run --extra dev pytest -q`:107 passed
+- `uv run --extra dev pytest tests/orchestration/test_inject.py -v`:4 passed
+- `uv run --extra dev mypy argus/`:clean
+- `uv run --extra dev ruff check .`:passed
+- `uv run --extra dev ruff format --check .`:passed
+
+**Non-blocking:** 新测试直接调用 `_advance()`,尚未覆盖 argparse →
+`cmd_continue()` → `_advance()` 的完整 CLI 连线以及多个 `--set` 参数的入口行为。
+代码审阅确认当前参数连线正确,可在后续补一条 parser/main 层回归测试。
