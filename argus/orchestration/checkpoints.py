@@ -35,6 +35,13 @@ _ALLOWED_MSGPACK_MODULES = [
 REVIEW_ENRICHMENT = "review-enrichment"
 REVIEW_FINDINGS = "review-findings"
 
+# 每个检查点对应的、人应查看的产物在 ArgusState 里的 key。
+# review-enrichment → 富化图;review-findings → 漏洞发现。
+_CHECKPOINT_ARTIFACT_KEYS: dict[str, str] = {
+    REVIEW_ENRICHMENT: "enriched_graph_path",
+    REVIEW_FINDINGS: "findings_path",
+}
+
 
 def make_checkpointer(workspace: str, runs_root: str = "runs") -> SqliteSaver:
     """构造指向 runs/<workspace>/state.db 的 SqliteSaver。
@@ -74,10 +81,29 @@ def review_findings(state: ArgusState) -> dict[str, Any]:
     return _run_review(state, REVIEW_FINDINGS)
 
 
+def _review_payload(state: ArgusState, checkpoint_name: str) -> dict[str, Any]:
+    """构造给人看的 interrupt payload:检查点名、待审产物路径、放行提示。
+
+    - stage:检查点名(review-enrichment / review-findings),CLI 据此提示。
+    - artifact_path:人应打开审阅(并可就地编辑)的产物路径,来自 ArgusState。
+    - message:人类可读提示,说明看什么、如何放行。
+    """
+    artifact_key = _CHECKPOINT_ARTIFACT_KEYS[checkpoint_name]
+    artifact_path = state[artifact_key]  # type: ignore[literal-required]
+    return {
+        "stage": checkpoint_name,
+        "artifact_path": artifact_path,
+        "message": (
+            f"paused at {checkpoint_name}: review {artifact_path}, "
+            f"then run `argus continue -w {state['workspace']}` to proceed"
+        ),
+    }
+
+
 def _run_review(state: ArgusState, checkpoint_name: str) -> dict[str, Any]:
     """检查点公共逻辑:按需 interrupt,然后把节点名记入 completed_nodes。"""
     if _checkpoint_enabled(state["config"], checkpoint_name):
-        # interrupt 会暂停图执行,持久化状态;resume 时从此处之后继续,本节点不重跑。
-        interrupt({"checkpoint": checkpoint_name, "message": f"awaiting review at {checkpoint_name}"})
+        # interrupt 会暂停图执行,持久化状态;resume/continue 时从此处之后继续,本节点不重跑。
+        interrupt(_review_payload(state, checkpoint_name))
 
     return {"completed_nodes": [*state["completed_nodes"], checkpoint_name]}

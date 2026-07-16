@@ -1,8 +1,8 @@
 """Argus CLI —— argparse 分发 start / resume / continue / stop / workspaces。
 
 - start:建 workspace 目录 → build_graph → load_config → make_initial_state → 编译并 invoke 图。
-- resume:用同 workspace 的 checkpointer 续跑;已完成节点(completed_nodes)不重跑。
-- continue:M1 骨架(后续任务完善 --set / --focus 注入)。
+- resume:崩溃后用同 workspace 的 checkpointer 续跑;已完成节点(completed_nodes)不重跑。
+- continue:人看完检查点后主动放行 interrupt,推进图继续跑(--set / --focus 注入留待 T10)。
 - stop:M1 骨架。
 - workspaces:列出 runs/ 下的 workspace。
 
@@ -40,7 +40,7 @@ def _report_result(result: dict[str, Any], workspace: str) -> None:
         interrupts = result["__interrupt__"]
         detail = interrupts[0].value if interrupts else {}
         print(f"[argus] paused at checkpoint: {detail}")
-        print(f"[argus] run `argus resume -w {workspace}` after review")
+        print(f"[argus] run `argus continue -w {workspace}` after review")
         return
 
     report_path = result.get("report_path")
@@ -87,9 +87,15 @@ def cmd_start(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_resume(args: argparse.Namespace) -> int:
-    """resume:用同 workspace 的 checkpointer 续跑。已完成节点不重跑。"""
-    workspace = args.workspace
+def _advance(workspace: str, resume_value: Any, action: str) -> int:
+    """resume / continue 共用的推进逻辑:把停下的图向前推。
+
+    - 校验 checkpoint db 存在。
+    - 图已完成(无 next)时报告即返回,不重跑。
+    - 停在 interrupt 时:用 Command(resume=resume_value) 放行(本节点不重跑)。
+    - 有待跑节点但不在 interrupt(如崩溃在节点中途)时:用 None 平推续跑。
+    action 仅用于日志,区分是 resume 还是 continue 触发。
+    """
     db_path = os.path.join(workspace_dir(workspace, RUNS_ROOT), "state.db")
     if not os.path.exists(db_path):
         print(f"[argus] no checkpoint for workspace {workspace!r} at {db_path}", file=sys.stderr)
@@ -102,20 +108,36 @@ def cmd_resume(args: argparse.Namespace) -> int:
 
     snapshot = app.get_state(cfg)
     if not snapshot.next:
-        print(f"[argus] workspace {workspace!r} already complete; nothing to resume")
+        print(f"[argus] workspace {workspace!r} already complete; nothing to {action}")
         _report_result(dict(snapshot.values), workspace)
         return 0
 
-    # 从上次 interrupt 处继续:Command(resume=...) 提供审阅结论,已完成节点不重跑。
-    result = app.invoke(Command(resume="approved"), cfg)
+    # 停在 interrupt(检查点)时,Command(resume=...) 提供审阅结论并从检查点之后继续;
+    # 否则(崩溃在节点中途)用 None 平推,让 LangGraph 从断点续跑。
+    paused_at_checkpoint = bool(snapshot.interrupts)
+    graph_input: Any = Command(resume=resume_value) if paused_at_checkpoint else None
+    if paused_at_checkpoint:
+        stage = snapshot.interrupts[0].value.get("stage", "?")
+        print(f"[argus] {action}: releasing checkpoint {stage!r} for workspace {workspace!r}")
+    else:
+        print(f"[argus] {action}: continuing workspace {workspace!r} from last checkpoint")
+
+    result = app.invoke(graph_input, cfg)
     _report_result(result, workspace)
     return 0
 
 
+def cmd_resume(args: argparse.Namespace) -> int:
+    """resume:崩溃后续跑。可能停在 interrupt,也可能停在节点中途;两种都推进。"""
+    return _advance(args.workspace, "approved", "resume")
+
+
 def cmd_continue(args: argparse.Namespace) -> int:
-    """continue:M1 骨架。后续任务实现 --set / --focus 注入后再续跑。"""
-    print(f"[argus] `continue` is a stub in M1 (workspace={args.workspace}); use `resume` for now")
-    return 0
+    """continue:人看完检查点后主动放行 interrupt,推进图继续跑。
+
+    T09 只做放行(送一个简单的审阅结论);--set / --focus 的参数注入留待 T10。
+    """
+    return _advance(args.workspace, "approved", "continue")
 
 
 def cmd_stop(_args: argparse.Namespace) -> int:
@@ -159,10 +181,10 @@ def _build_parser() -> argparse.ArgumentParser:
     resume.add_argument("-w", "--workspace", required=True, help="workspace 名")
     resume.set_defaults(func=cmd_resume)
 
-    cont = subparsers.add_parser("continue", help="(M1 骨架)带注入的续跑")
+    cont = subparsers.add_parser("continue", help="人审阅后放行 interrupt 检查点,推进图继续跑")
     cont.add_argument("-w", "--workspace", required=True, help="workspace 名")
-    cont.add_argument("--set", action="append", default=[], help="点路径覆盖")
-    cont.add_argument("--focus", default=None, help="聚焦路径")
+    cont.add_argument("--set", action="append", default=[], help="点路径覆盖(T10 注入)")
+    cont.add_argument("--focus", default=None, help="聚焦路径(T10 注入)")
     cont.set_defaults(func=cmd_continue)
 
     stop = subparsers.add_parser("stop", help="(M1 骨架)停止运行")
