@@ -13,12 +13,13 @@
 
 from __future__ import annotations
 
+import json
 import os
 from typing import Any
 
 from langgraph.types import Command
 
-from argus.contracts import AnalysisContext, AnalyzerResult, Phase
+from argus.contracts import AnalysisContext, AnalyzerResult, Confidence, Finding, Phase, Severity
 from argus.orchestration.checkpoints import REVIEW_ENRICHMENT, REVIEW_FINDINGS, make_checkpointer
 from argus.orchestration.pipeline import build_pipeline
 from argus.orchestration.state import make_initial_state
@@ -39,6 +40,38 @@ class MockVuln:
     def run(self, ctx: AnalysisContext) -> AnalyzerResult:
         self.calls += 1
         return {"analyzer": self.name, "findings": [], "enrichment": {}}
+
+
+def _finding_with_enums() -> Finding:
+    """构造一条 severity/confidence 为枚举的 finding,验证落盘时枚举被序列化成字符串。"""
+    return {
+        "id": "mock:injection:deadbeef",
+        "analyzer": "mock-finding",
+        "vuln_class": "injection",
+        "title": "SQL injection in login",
+        "severity": Severity.HIGH,
+        "confidence": Confidence.HIGH,
+        "locations": [{"file": "api/login.py", "line": 42, "node_id": "file:api/login.py"}],
+        "data_flow": "request.form -> query",
+        "rationale": "unsanitized input reaches SQL",
+        "evidence": "cursor.execute(f'... {user}')",
+        "remediation": "use parameterized queries",
+    }
+
+
+class MockVulnWithFinding:
+    """产出一条带枚举 severity/confidence 的 finding 的假漏洞分析器。"""
+
+    name = "mock-finding"
+    phase = Phase.VULN_ANALYSIS
+    requires: list[str] = []
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def run(self, ctx: AnalysisContext) -> AnalyzerResult:
+        self.calls += 1
+        return {"analyzer": self.name, "findings": [_finding_with_enums()], "enrichment": {}}
 
 
 def _thread_config(workspace: str) -> dict[str, Any]:
@@ -93,8 +126,14 @@ def test_pipeline_pauses_at_review_enrichment(tmp_path: Any) -> None:
     assert REVIEW_ENRICHMENT not in result["completed_nodes"]
     assert "vuln" not in result["completed_nodes"]
 
-    # 图停在 review-enrichment 节点(下一步就是它)。
+    # 停在检查点时富化产物已落盘,内容 == checkpoint state 里的 enriched。
+    enriched_path = state["enriched_graph_path"]
+    assert os.path.exists(enriched_path)
     snapshot = app.get_state(cfg)
+    with open(enriched_path, encoding="utf-8") as handle:
+        assert json.load(handle) == snapshot.values["enriched"]
+
+    # 图停在 review-enrichment 节点(下一步就是它)。
     assert snapshot.next == (REVIEW_ENRICHMENT,)
 
 
@@ -113,6 +152,13 @@ def test_continue_resumes_past_interrupt(tmp_path: Any) -> None:
     assert REVIEW_ENRICHMENT in second["completed_nodes"]
     assert "vuln" in second["completed_nodes"]
     assert "report" not in second["completed_nodes"]
+
+    # 停在 review-findings 时 findings 产物已落盘,内容 == checkpoint state 里的 findings。
+    findings_path = state["findings_path"]
+    assert os.path.exists(findings_path)
+    snapshot = app.get_state(cfg)
+    with open(findings_path, encoding="utf-8") as handle:
+        assert json.load(handle) == snapshot.values["findings"]
 
     # 再放行 review-findings,跑到 report。
     final = app.invoke(Command(resume="approved"), cfg)
@@ -157,3 +203,79 @@ def test_only_selected_checkpoint_enabled(tmp_path: Any) -> None:
     assert REVIEW_FINDINGS in final["completed_nodes"]
     assert "report" in final["completed_nodes"]
     assert os.path.exists(final["report_path"])
+
+
+def test_findings_artifact_serializes_enums_as_strings(tmp_path: Any) -> None:
+    """findings 落盘时 Severity/Confidence 枚举被转成纯字符串("high" 等)。"""
+    runs_root = str(tmp_path / "runs")
+    workspace = "enum-serialize-test"
+    config: dict[str, Any] = {
+        "analyzers": {"enrichment": [], "vuln": ["mock-finding"]},
+        "checkpoints": True,
+        "source_mode": "raw",
+    }
+    state = make_initial_state(
+        repo_path=str(tmp_path / "repo"),
+        workspace=workspace,
+        config=config,
+        runs_root=runs_root,
+    )
+    state["graph_db_path"] = FIXTURE_DB
+
+    mock = MockVulnWithFinding()
+    checkpointer = make_checkpointer(workspace, runs_root=runs_root)
+    app = build_pipeline({"mock-finding": mock}, checkpointer)
+    cfg = _thread_config(workspace)
+
+    # 放行 review-enrichment,停在 review-findings。
+    app.invoke(state, cfg)
+    app.invoke(Command(resume="approved"), cfg)
+
+    findings_path = state["findings_path"]
+    assert os.path.exists(findings_path)
+    with open(findings_path, encoding="utf-8") as handle:
+        written = json.load(handle)
+
+    # 枚举被序列化成字符串,而非枚举对象/其它形式。
+    assert written[0]["severity"] == "high"
+    assert written[0]["confidence"] == "high"
+    assert isinstance(written[0]["severity"], str)
+    # 落盘内容与 checkpoint state 里的 findings 一致(枚举 == 字符串,因 (str, Enum))。
+    snapshot = app.get_state(cfg)
+    assert written == snapshot.values["findings"]
+
+
+def test_empty_analyzers_still_persist_valid_empty_artifacts(tmp_path: Any) -> None:
+    """两阶段均无分析器时,仍落盘合法空产物:enriched → {},findings → []。"""
+    runs_root = str(tmp_path / "runs")
+    workspace = "empty-artifacts-test"
+    config: dict[str, Any] = {
+        "analyzers": {"enrichment": [], "vuln": []},
+        "checkpoints": True,
+        "source_mode": "raw",
+    }
+    state = make_initial_state(
+        repo_path=str(tmp_path / "repo"),
+        workspace=workspace,
+        config=config,
+        runs_root=runs_root,
+    )
+    state["graph_db_path"] = FIXTURE_DB
+
+    checkpointer = make_checkpointer(workspace, runs_root=runs_root)
+    app = build_pipeline({}, checkpointer)
+    cfg = _thread_config(workspace)
+
+    # 停在 review-enrichment:enriched 产物已落盘为合法空 {}。
+    app.invoke(state, cfg)
+    enriched_path = state["enriched_graph_path"]
+    assert os.path.exists(enriched_path)
+    with open(enriched_path, encoding="utf-8") as handle:
+        assert json.load(handle) == {}
+
+    # 放行到 review-findings:findings 产物已落盘为合法空 []。
+    app.invoke(Command(resume="approved"), cfg)
+    findings_path = state["findings_path"]
+    assert os.path.exists(findings_path)
+    with open(findings_path, encoding="utf-8") as handle:
+        assert json.load(handle) == []

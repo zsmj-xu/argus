@@ -14,7 +14,9 @@
 
 from __future__ import annotations
 
+import json
 import os
+import tempfile
 from typing import Any
 
 from langgraph.graph import END, START, StateGraph
@@ -71,6 +73,38 @@ class _FileSourceAccess:
         return "".join(lines[lo:hi])
 
 
+def _json_default(value: object) -> Any:
+    """json.dump 的兜底序列化器。
+
+    Severity/Confidence 是 (str, Enum);取 `.value` 落成纯字符串,反序列化回来即干净的
+    str,不会残留枚举对象。其余不可序列化对象退化成 str,保证 json.dump 永不因未知类型崩。
+    """
+    if hasattr(value, "value"):
+        return value.value
+    return str(value)
+
+
+def _atomic_write_json(path: str, obj: Any) -> None:
+    """把 obj 以 JSON 原子写到 path:临时文件 + os.replace。
+
+    - 先 makedirs 确保父目录存在。
+    - 写到同目录下的临时文件再 os.replace,避免 interrupt 时暴露半写文件。
+    - 用 _json_default 序列化枚举(Severity/Confidence)等非原生类型。
+    """
+    dirname = os.path.dirname(path) or "."
+    os.makedirs(dirname, exist_ok=True)
+
+    fd, tmp_path = tempfile.mkstemp(dir=dirname, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(obj, handle, default=_json_default, ensure_ascii=False, indent=2)
+        os.replace(tmp_path, path)
+    except BaseException:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        raise
+
+
 def _runs_root_from_state(state: ArgusState) -> str:
     """从 report_path(<runs_root>/<ws>/report.md)反推 runs_root。"""
     return os.path.dirname(os.path.dirname(state["report_path"]))
@@ -108,6 +142,25 @@ def _selected_names(state: ArgusState, phase: Phase) -> list[str]:
     return list(analyzers_cfg.get("vuln", []))
 
 
+def _persist_phase_artifact(
+    state: ArgusState,
+    phase: Phase,
+    enriched: dict[str, Any],
+    findings: list[Finding],
+) -> None:
+    """把本阶段产物确定性落盘到 ArgusState 里约定的路径。
+
+    - enrichment → enriched_graph_path 写富化 dict(空阶段即 {})。
+    - vuln → findings_path 写 findings 列表(空阶段即 [];枚举经 _json_default 转字符串)。
+    interrupt 检查点在本节点之后才停顿,故此处落盘保证:停在检查点时对应文件已存在,
+    内容即 checkpoint state 里的值。
+    """
+    if phase is Phase.ENRICHMENT:
+        _atomic_write_json(state["enriched_graph_path"], enriched)
+    else:
+        _atomic_write_json(state["findings_path"], findings)
+
+
 def _run_phase(
     state: ArgusState,
     analyzers: dict[str, Analyzer],
@@ -119,11 +172,14 @@ def _run_phase(
     - enrichment 产物合并进 state.enriched(供下游漏洞分析器读)。
     - findings 累加进 state.findings。
     未在注册表里的名字静默跳过(M1 注册表可能为空)。
+    无论是否有分析器运行,本阶段产物都会落盘(空阶段写合法空 {} / [])。
     """
     selected = _selected_names(state, phase)
     to_run = [analyzers[name] for name in selected if name in analyzers and analyzers[name].phase is phase]
 
     if not to_run:
+        # 无分析器:产物保持 state 现值(enrichment 通常 {},vuln 通常 []),仍确定性落盘。
+        _persist_phase_artifact(state, phase, dict(state["enriched"]), list(state["findings"]))
         return {"completed_nodes": [*state["completed_nodes"], node_name]}
 
     graph: GraphHandle = CodegraphHandle(state["graph_db_path"])
@@ -136,6 +192,8 @@ def _run_phase(
         result = analyzer.run(ctx)
         merged_enriched.update(result.get("enrichment", {}))
         new_findings.extend(result.get("findings", []))
+
+    _persist_phase_artifact(state, phase, merged_enriched, new_findings)
 
     return {
         "enriched": merged_enriched,
