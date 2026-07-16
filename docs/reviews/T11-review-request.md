@@ -30,4 +30,59 @@ uv run --extra dev mypy argus/ && uv run --extra dev ruff check . && uv run --ex
 
 > 两个裁决(Spec ✅/❌ + Quality Approved/需修改)+ 分级 findings。对上面两个设计边界给出判断。
 
-（待 Codex 填写)
+**Spec: ❌ 需一轮边界修复。** 主路径符合 T11 意图,但磁盘内容未经最小验证/
+归一化就写回 `ArgusState`,尚未满足冻结契约。
+
+**Quality:需修改。** 无 Critical;有 2 条 Important。修复后可快速复审。
+
+独立验证结果:
+
+- `uv run pytest -q`:111 passed
+- `uv run pytest tests/orchestration/test_edit_artifact.py -q`:4 passed
+- `uv run mypy argus/`:clean
+- `uv run ruff check .`:passed
+- `uv run ruff format --check .`:passed
+
+### Important 1 —— 合法 JSON 的错误形状会污染 state 并在下游崩溃
+
+`argus/orchestration/checkpoints.py:153-155` 把任何 `json.load()` 成功的值直接写到
+`enriched` / `findings`。因此 `enriched-graph.json` 为 `[]`、`findings.json` 为
+`null`/对象/字符串列表时都被视为成功;随后分析器调用 `enriched.get(...)` 或报告读取
+`finding["severity"]` 时才异常。这与当前对 JSON 语法错误“warning + 保留内存 state”
+的安全兜底不一致。
+
+本任务内应增加**边界层最小校验**:
+
+- enrichment 顶层必须是 dict;
+- findings 顶层必须是 list,每项必须是满足冻结 `Finding` 形状的 mapping(至少验证
+  报告/评测必读字段与 locations 的容器形状);
+- 任一项不合法时整份拒绝,warning 后保留内存值,不要部分替换。
+
+需补两类测试:两个产物的错误顶层类型;合法 list 中包含畸形 finding。完整的
+business-flow 六段领域 schema **不应**在这里验证,否则 orchestration 会耦合具体分析器。
+
+### Important 2 —— findings 重载后枚举退化,违反冻结 Finding 契约
+
+`tests/orchestration/test_edit_artifact.py:208-209` 当前把 `severity == "high"` 当成预期,
+但 `Finding.severity/confidence` 和 `ArgusState.findings` 的冻结定义要求
+`Severity` / `Confidence` 枚举。报告层 `_as_str` 的兼容只能避免当前 renderer 崩溃,
+不能使共享 state 重新满足契约,后续 T16 评测也不应被迫接收平行类型。
+
+重载 findings 时应验证字符串值并构造成 `Severity(value)` / `Confidence(value)`;
+未知枚举值按无效整份拒绝并保留内存 state。测试应断言放行后的 state 中两字段是枚举,
+而磁盘 JSON 仍保持字符串表示。
+
+## 两个设计边界的判断
+
+1. **整文件替换语义:认可。** 人删除 finding 或 enrichment 条目应能表达“驳回/修正”;若做
+   merge,删除反而无法生效。空 `[]` / `{}` 也应作为合法的明确替换。替换应以“整份通过
+   最小校验”为原子边界,不要部分接受。
+2. **schema 校验:现在加最小契约校验,完整领域校验留后续。** 顶层容器、Finding 必需形状、
+   locations 形状和枚举恢复属于磁盘→冻结 state 的反序列化责任,应随 T11 完成;T12F 的
+   business-flow 深层引用完整性等领域规则不属于 T11,不应在 checkpoint 层复制。
+
+## 其他观察
+
+- interrupt 返回后再读盘的时机正确,下游能看到人工版本并持久化到 checkpoint。
+- `checkpoints=False` 不读盘、文件缺失/JSON 语法错误保留内存值,行为正确。
+- 分支当前相对 main 为 `1 1`,修复完成后合并前仍需 rebase 最新 main。
