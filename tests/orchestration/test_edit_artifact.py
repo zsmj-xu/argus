@@ -205,8 +205,12 @@ def test_edited_findings_is_reloaded(tmp_path: Any) -> None:
     # 关键:最终 state.findings 是手改后的标题。
     findings = app.get_state(cfg).values["findings"]
     assert findings[0]["title"] == "EDITED BY HUMAN: command injection"
-    # severity 仍是字符串,report 用 _as_str 兼容,渲染不崩。
-    assert findings[0]["severity"] == "high"
+    # 磁盘上 severity/confidence 是字符串,重载回 state 时恢复成枚举以满足 Finding 契约。
+    # 断言枚举身份而非仅 == "high"(Severity 是 (str, Enum),== "high" 对字符串也为真,恒真)。
+    assert findings[0]["severity"] is Severity.HIGH
+    assert isinstance(findings[0]["severity"], Severity)
+    assert findings[0]["confidence"] is Confidence.HIGH
+    assert isinstance(findings[0]["confidence"], Confidence)
 
     # report.md 用了手改后的标题。
     report_path = state["report_path"]
@@ -290,4 +294,153 @@ def test_corrupt_artifact_json_keeps_in_memory_state(tmp_path: Any, caplog: Any)
     # 关键:重载失败时保留内存里的 enriched(富化器产出的原值),而非把坏 JSON 塞进去。
     assert capture.seen_enriched == {"endpoints": {"orig": True}}
     # 记了 warning。
+    assert any(record.levelno == logging.WARNING for record in caplog.records)
+
+
+def test_enriched_wrong_top_type_keeps_in_memory_state(tmp_path: Any, caplog: Any) -> None:
+    """enriched-graph.json 合法 JSON 但顶层是 list(应为 dict)→ 整份拒绝,保留内存 state,记 warning。"""
+    runs_root = str(tmp_path / "runs")
+    workspace = "enriched-wrong-type-test"
+    config: dict[str, Any] = {
+        "analyzers": {"enrichment": ["enricher"], "vuln": ["capture"]},
+        "checkpoints": [REVIEW_ENRICHMENT],
+        "source_mode": "raw",
+    }
+    state = _make_state(tmp_path, workspace, config, runs_root)
+
+    enricher = MockEnricher({"endpoints": {"orig": True}})
+    capture = EnrichedCapturingVuln()
+    checkpointer = make_checkpointer(workspace, runs_root=runs_root)
+    app = build_pipeline({"enricher": enricher, "capture": capture}, checkpointer)
+    cfg = _thread_config(workspace)
+
+    first = app.invoke(state, cfg)
+    assert "__interrupt__" in first
+
+    # 人把 enriched-graph.json 写成合法 JSON 但错误顶层类型:list 而非 dict。
+    enriched_path = state["enriched_graph_path"]
+    with open(enriched_path, "w", encoding="utf-8") as handle:
+        json.dump([], handle)
+
+    with caplog.at_level(logging.WARNING):
+        final = app.invoke(Command(resume="approved"), cfg)
+
+    assert "__interrupt__" not in final
+    assert capture.calls == 1
+    # 关键:下游看到的是原内存值(dict),而非磁盘上的错误形状(list)。
+    assert capture.seen_enriched == {"endpoints": {"orig": True}}
+    assert any(record.levelno == logging.WARNING for record in caplog.records)
+
+
+def test_findings_wrong_top_type_keeps_in_memory_state(tmp_path: Any, caplog: Any) -> None:
+    """findings.json 合法 JSON 但顶层是 null / 对象(应为 list)→ 整份拒绝,保留内存 state,记 warning。"""
+    runs_root = str(tmp_path / "runs")
+    workspace = "findings-wrong-type-test"
+    config: dict[str, Any] = {
+        "analyzers": {"enrichment": [], "vuln": ["mock-finding"]},
+        "checkpoints": [REVIEW_FINDINGS],
+        "source_mode": "raw",
+    }
+    state = _make_state(tmp_path, workspace, config, runs_root)
+
+    mock = MockVulnWithFinding("SQL injection in login")
+    checkpointer = make_checkpointer(workspace, runs_root=runs_root)
+    app = build_pipeline({"mock-finding": mock}, checkpointer)
+    cfg = _thread_config(workspace)
+
+    first = app.invoke(state, cfg)
+    assert "__interrupt__" in first
+
+    # 人把 findings.json 写成合法 JSON 但错误顶层类型:null(应为 list)。
+    findings_path = state["findings_path"]
+    with open(findings_path, "w", encoding="utf-8") as handle:
+        json.dump(None, handle)
+
+    with caplog.at_level(logging.WARNING):
+        final = app.invoke(Command(resume="approved"), cfg)
+
+    assert "__interrupt__" not in final
+    # 关键:重载被拒绝,state.findings 保留内存里富化器产出的原 finding(枚举 severity,原标题)。
+    findings = app.get_state(cfg).values["findings"]
+    assert len(findings) == 1
+    assert findings[0]["title"] == "SQL injection in login"
+    assert findings[0]["severity"] is Severity.HIGH
+    assert any(record.levelno == logging.WARNING for record in caplog.records)
+
+
+def test_findings_list_with_malformed_item_keeps_in_memory_state(tmp_path: Any, caplog: Any) -> None:
+    """findings.json 是 list 但某项缺字段 → 整份拒绝,保留内存 state,记 warning。"""
+    runs_root = str(tmp_path / "runs")
+    workspace = "findings-malformed-item-test"
+    config: dict[str, Any] = {
+        "analyzers": {"enrichment": [], "vuln": ["mock-finding"]},
+        "checkpoints": [REVIEW_FINDINGS],
+        "source_mode": "raw",
+    }
+    state = _make_state(tmp_path, workspace, config, runs_root)
+
+    mock = MockVulnWithFinding("SQL injection in login")
+    checkpointer = make_checkpointer(workspace, runs_root=runs_root)
+    app = build_pipeline({"mock-finding": mock}, checkpointer)
+    cfg = _thread_config(workspace)
+
+    first = app.invoke(state, cfg)
+    assert "__interrupt__" in first
+
+    # 人把 findings.json 写成 list,但某项缺 Finding 必需字段(删掉 remediation)。
+    findings_path = state["findings_path"]
+    with open(findings_path, encoding="utf-8") as handle:
+        on_disk = json.load(handle)
+    del on_disk[0]["remediation"]
+    with open(findings_path, "w", encoding="utf-8") as handle:
+        json.dump(on_disk, handle)
+
+    with caplog.at_level(logging.WARNING):
+        final = app.invoke(Command(resume="approved"), cfg)
+
+    assert "__interrupt__" not in final
+    # 关键:含畸形项 → 整份拒绝,保留内存里的原 finding。
+    findings = app.get_state(cfg).values["findings"]
+    assert len(findings) == 1
+    assert findings[0]["title"] == "SQL injection in login"
+    assert findings[0]["severity"] is Severity.HIGH
+    assert any(record.levelno == logging.WARNING for record in caplog.records)
+
+
+def test_findings_list_with_unknown_severity_keeps_in_memory_state(tmp_path: Any, caplog: Any) -> None:
+    """findings.json 是 list 但某项 severity 是未知枚举值 → 整份拒绝,保留内存 state,记 warning。"""
+    runs_root = str(tmp_path / "runs")
+    workspace = "findings-unknown-severity-test"
+    config: dict[str, Any] = {
+        "analyzers": {"enrichment": [], "vuln": ["mock-finding"]},
+        "checkpoints": [REVIEW_FINDINGS],
+        "source_mode": "raw",
+    }
+    state = _make_state(tmp_path, workspace, config, runs_root)
+
+    mock = MockVulnWithFinding("SQL injection in login")
+    checkpointer = make_checkpointer(workspace, runs_root=runs_root)
+    app = build_pipeline({"mock-finding": mock}, checkpointer)
+    cfg = _thread_config(workspace)
+
+    first = app.invoke(state, cfg)
+    assert "__interrupt__" in first
+
+    # 人把某项 severity 改成未知值。
+    findings_path = state["findings_path"]
+    with open(findings_path, encoding="utf-8") as handle:
+        on_disk = json.load(handle)
+    on_disk[0]["severity"] = "bogus"
+    with open(findings_path, "w", encoding="utf-8") as handle:
+        json.dump(on_disk, handle)
+
+    with caplog.at_level(logging.WARNING):
+        final = app.invoke(Command(resume="approved"), cfg)
+
+    assert "__interrupt__" not in final
+    # 关键:未知枚举值 → 整份拒绝,保留内存里的原 finding(枚举 severity)。
+    findings = app.get_state(cfg).values["findings"]
+    assert len(findings) == 1
+    assert findings[0]["title"] == "SQL injection in login"
+    assert findings[0]["severity"] is Severity.HIGH
     assert any(record.levelno == logging.WARNING for record in caplog.records)
