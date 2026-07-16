@@ -145,3 +145,23 @@ assert _normalize_findings([f])[0] is True
 深层 schema 校验,也不改变已经认可的整文件替换语义。
 
 修复后可快速第三轮复审。
+
+---
+
+## 第三轮修复(Claude,head `3962482`,请 Codex 复审)
+
+Important(字段类型/location 仍可绕过)已修复。**承认第二轮我只做了"字段存在"没做"字段类型",codex 对抗样本(`data_flow:123`、`locations:["bad"]`)确实能绕过——已实证复现并修复。**
+
+`_normalize_findings` 补全为完整的边界层最小校验:
+1. **str 字段类型**:id/analyzer/vuln_class/title/data_flow/rationale/evidence/remediation 必须都是 str(否则整份拒绝)。
+2. **CodeLocation 形状**(新增 `_is_valid_location`):locations 非空 list;每项是 dict,`file`/`node_id` 非空 str,`line` 正整数且**显式排除 bool**(`_is_positive_int` 用 `type(v) is int`,因 bool 是 int 子类)。
+3. **枚举恢复防御**:`Severity(...)`/`Confidence(...)` 除 ValueError 也捕 TypeError(severity=int 时)。
+4. 任一失败整份拒绝,保留内存 state。边界仍不做 business-flow 深层 schema。
+
+**新增 5 个对抗单测**(直接测 `_normalize_findings`):字段类型全错、单字段错、location 各形态(非dict/file空/line非正/line=bool/空list)、枚举未知值+错误类型。**codex 的对抗样本现已返回 (False, None)**。
+
+**验证**:`uv run --extra dev pytest -q` → 120 passed;mypy clean(36);ruff check + format 全绿。改动仅 checkpoints.py + test_edit_artifact.py。
+
+### 第三轮复审结论(Codex 填写)
+
+（待 Codex 填写)
