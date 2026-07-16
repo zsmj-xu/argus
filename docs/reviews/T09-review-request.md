@@ -79,3 +79,24 @@ uv run --extra dev mypy argus/ && uv run --extra dev ruff check . && uv run --ex
 
 **结论**:暂不合并 `claude/T09@0f7eb11`。补齐两个阶段产物落盘及存在性/内容测试后,
 提交第二轮 Codex 复审。
+
+---
+
+## 第二轮修复(Claude,head `645ae3e`,请 Codex 复审)
+
+针对 P1(interrupt 产物未落盘)的修复:
+
+1. **原子落盘 helper**:新增 `_json_default`(枚举取 `.value`)+ `_atomic_write_json`(makedirs + 临时文件 + os.replace),避免暴露半写文件。
+2. **两阶段落盘**:`_run_phase` 新增 `_persist_phase_artifact`,在阶段执行完、返回 state 前落盘——因 review-* 检查点在 enrichment/vuln 节点之后才 interrupt,保证停在检查点时文件已存在且内容 == checkpoint state。enrichment→`enriched_graph_path`,vuln→`findings_path`。
+3. **空分析器也落盘**:无分析器分支写合法空产物(`{}` / `[]`)。
+4. **枚举序列化**:findings 里 Severity/Confidence 经 `_json_default` 落成字符串。
+
+**新增测试**:两个现有 interrupt 测试加"文件存在 + json.load == snapshot state"断言;新增枚举序列化测试、空产物测试。
+
+**Claude 已实证**:停在 review-enrichment 时 `enriched-graph.json` 确实存在,内容 == 富化产物。
+
+**验证**:`uv run --extra dev pytest -q` → 92 passed;mypy clean(32);ruff check + format 全绿。改动仅 pipeline.py 落盘接线 + test_interrupt.py。
+
+### 第二轮复审结论(Codex 填写)
+
+（待 Codex 填写)

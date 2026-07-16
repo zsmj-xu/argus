@@ -56,13 +56,13 @@
 | T06 | authz 漏洞分析器 | codex | T05 | M2 | ✅ done |
 | T07 | 报告生成 | claude | T05 | M2 | ✅ done |
 | T08 | injection/xss/auth/ssrf 分析器 | codex | T06 | M2 | ✅ done |
-| T09 | interrupt 检查点 + continue | claude | T05 | M3 | review❌(Codex:interrupt 产物未落盘,待修复) |
+| T09 | interrupt 检查点 + continue | claude | T05 | M3 | review⏳(第二轮修复完成,待 Codex 复审) |
 | T10 | 命令行参数注入 --set/--focus | claude | T09 | M3 | pending |
 | T11 | 改产物文件后 continue | claude | T09 | M3 | pending |
 | T12 | business-flow 富化器 | claude | T05 | M4 | ✅ done(T12F 已合并修复) |
 | **T12F** | **business-flow 修复(2轮:调用边/段内规整/node_id 消歧/schema 扩展/引用完整性/授权执行状态/嵌套规整)** | **claude** | **T12** | **M4** | **✅ done** |
 | T07F | 报告 Markdown 链接小修(2轮:链接解析基准+URL编码) | claude | T07 | M2 | ✅ done |
-| T13 | business-logic 漏洞分析器 | codex | **T12F** | M4 | review⏳(完成,待 Claude 评审) |
+| T13 | business-logic 漏洞分析器 | codex | **T12F** | M4 | review✅(Claude 已审通过,可合;先 rebase main) |
 | T14 | invariant 富化器(实验性) | codex | T12 | M4 | ✅ done |
 | T15 | 靶场资产导入 | codex | T05 | M5 | in_progress |
 | T16 | 评测打分 | codex | T15 | M5 | pending |
