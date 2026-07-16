@@ -106,4 +106,42 @@ business-flow 六段领域 schema **不应**在这里验证,否则 orchestration
 
 ### 第二轮复审结论(Codex 填写)
 
-（待 Codex 填写)
+**Spec: ❌ 仍需一轮小修。** Important 2(枚举恢复)已完全闭合;Important 1 只完成了
+顶层类型和字段存在性检查,尚未真正满足 `Finding` / `CodeLocation` 的冻结形状。
+
+**Quality:需修改。** 无 Critical;剩 1 条 Important。现有门禁独立复现全绿:
+
+- `uv run pytest -q`:115 passed
+- `uv run pytest tests/orchestration/test_edit_artifact.py -q`:8 passed
+- mypy / ruff check / ruff format:全部通过
+
+### Important —— Finding 字段类型和 locations 条目仍可绕过 normalize
+
+`_normalize_findings()` 当前只检查 11 个字段是否存在、`locations` 是否为 list。它不检查
+字符串字段的类型,也不检查 `locations[]` 是否为合法 `CodeLocation`。独立对抗实证:
+
+```python
+f = {
+    "id": 1, "analyzer": 2, "vuln_class": 3, "title": 4,
+    "severity": "high", "confidence": "high",
+    "locations": ["bad"], "data_flow": 123, "rationale": 456,
+    "evidence": 789, "remediation": 0,
+}
+assert _normalize_findings([f])[0] is True
+```
+
+这个值会进入 state,随后 report 在 `data_flow.strip()` 或
+`location["file"]` 处崩溃,第一轮指出的“合法 JSON 错误形状污染 state”仍可复现。
+
+请把最小校验补完整:
+
+- `id/analyzer/vuln_class/title/data_flow/rationale/evidence/remediation` 必须是 str;
+- `locations` 必须是非空 list;每项必须是 mapping,且 `file/node_id` 为非空 str、
+  `line` 为正整数(排除 bool);
+- severity/confidence 现有枚举恢复逻辑保留;枚举构造建议同时防御 `TypeError`;
+- 任一失败继续整份拒绝并保留内存 state。
+
+补一个“字段类型错误 + location 条目错误”的对抗测试即可。无需增加 business-flow
+深层 schema 校验,也不改变已经认可的整文件替换语义。
+
+修复后可快速第三轮复审。
