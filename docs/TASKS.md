@@ -56,7 +56,7 @@
 | T06 | authz 漏洞分析器 | codex | T05 | M2 | ✅ done |
 | T07 | 报告生成 | claude | T05 | M2 | ✅ done |
 | T08 | injection/xss/auth/ssrf 分析器 | codex | T06 | M2 | ✅ done |
-| T09 | interrupt 检查点 + continue | claude | T05 | M3 | in_progress |
+| T09 | interrupt 检查点 + continue | claude | T05 | M3 | review⏳(待 Codex 评审) |
 | T10 | 命令行参数注入 --set/--focus | claude | T09 | M3 | pending |
 | T11 | 改产物文件后 continue | claude | T09 | M3 | pending |
 | T12 | business-flow 富化器 | claude | T05 | M4 | ✅ done(T12F 已合并修复) |
