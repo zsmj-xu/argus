@@ -11,7 +11,9 @@
 
 from __future__ import annotations
 
+import os
 from enum import Enum
+from urllib.parse import quote
 
 from argus.contracts import ArgusState, Finding
 
@@ -95,8 +97,54 @@ def _render_header(findings: list[Finding], state: ArgusState) -> list[str]:
     return lines
 
 
-def _render_locations(finding: Finding) -> list[str]:
-    """位置列表:每条渲染成可点击的 `file:line` 加节点 id。"""
+def _code_fence(content: str) -> str:
+    """为代码块选一个足够长的反引号围栏。
+
+    默认三反引号;若内容自身含连续反引号(会提前闭合围栏),则用比内容里
+    最长反引号串再多一个的围栏,保证正确包裹。
+    """
+    longest_run = 0
+    current_run = 0
+    for char in content:
+        if char == "`":
+            current_run += 1
+            longest_run = max(longest_run, current_run)
+        else:
+            current_run = 0
+    return "`" * max(3, longest_run + 1)
+
+
+def _link_target(file: str, line: int, repo_path: str, report_dir: str) -> str:
+    """算出从报告文件指向真实源码的可点击链接目标(含行号锚点)。
+
+    `location["file"]` 是相对仓库根(repo_path)的路径,而报告实际写在 report_dir
+    (runs/<ws>/)。Markdown 相对链接从报告所在目录解析,故必须计算「从 report_dir
+    指向 repo_path/file」的相对路径,否则点击会落到 report_dir 下不存在的位置。
+
+    路径部分用标准 URL 编码(quote),把空格、`#`(否则被当 fragment 分隔)、`)`
+    (否则截断 Markdown 链接目标)等特殊字符编码掉;`/` 保留为路径分隔符。行号锚点
+    `#L<line>` 在编码之后单独拼接,不参与编码。
+    """
+    absolute = os.path.join(repo_path, file)
+    relative = os.path.relpath(absolute, report_dir)
+    # quote 默认保留 "/",把空格 / # / ) 等编码掉,确保链接目标不会被 Markdown 截断。
+    encoded = quote(relative)
+    return f"{encoded}#L{line}"
+
+
+def _location_link(file: str, line: int, repo_path: str, report_dir: str) -> str:
+    """把 file+line 渲染成可点击的 Markdown 链接。
+
+    链接文本为 `file:line`;目标由 _link_target 算出,是从报告文件出发、指向真实
+    源码文件的相对路径 + 行号锚点。目标用尖括号 `<...>` 包裹,即使路径含已编码的
+    特殊字符也不会破坏 Markdown 链接语法。
+    """
+    target = _link_target(file, line, repo_path, report_dir)
+    return f"[{file}:{line}](<{target}>)"
+
+
+def _render_locations(finding: Finding, repo_path: str, report_dir: str) -> list[str]:
+    """位置列表:每条渲染成可点击的 Markdown 链接 + 节点 id。"""
     lines = ["**Locations:**", ""]
     locations = finding["locations"]
     if not locations:
@@ -105,17 +153,17 @@ def _render_locations(finding: Finding) -> list[str]:
         return lines
 
     for location in locations:
-        anchor = f"`{location['file']}:{location['line']}`"
+        link = _location_link(location["file"], location["line"], repo_path, report_dir)
         node_id = location.get("node_id", "")
         if node_id:
-            lines.append(f"- {anchor} (node: `{node_id}`)")
+            lines.append(f"- {link} (node: `{node_id}`)")
         else:
-            lines.append(f"- {anchor}")
+            lines.append(f"- {link}")
     lines.append("")
     return lines
 
 
-def _render_finding(finding: Finding, index: int) -> list[str]:
+def _render_finding(finding: Finding, index: int, repo_path: str, report_dir: str) -> list[str]:
     """渲染单条 finding:标题 + 徽章 + 元数据 + 位置 + 数据流 / 依据 / 证据 / 修复。"""
     severity = _severity_label(_as_str(finding["severity"]))
     confidence = _as_str(finding["confidence"]).strip().title() or "Unknown"
@@ -130,7 +178,7 @@ def _render_finding(finding: Finding, index: int) -> list[str]:
         f"- **ID:** `{finding['id']}`",
         "",
     ]
-    lines.extend(_render_locations(finding))
+    lines.extend(_render_locations(finding, repo_path, report_dir))
 
     data_flow = finding["data_flow"].strip()
     if data_flow:
@@ -141,7 +189,8 @@ def _render_finding(finding: Finding, index: int) -> list[str]:
 
     evidence = finding["evidence"].strip()
     if evidence:
-        lines.extend(["**Evidence:**", "", "```", evidence, "```", ""])
+        fence = _code_fence(evidence)
+        lines.extend(["**Evidence:**", "", fence, evidence, fence, ""])
 
     remediation = finding["remediation"].strip()
     lines.extend(["**Remediation:**", "", remediation or "_Not provided._", ""])
@@ -152,22 +201,29 @@ def _render_finding(finding: Finding, index: int) -> list[str]:
 def render_report(findings: list[Finding], state: ArgusState) -> str:
     """把 findings 渲染成 markdown 安全报告。
 
-    findings 按严重度降序(critical → high → medium → low → info)分组;每条渲染
-    标题、severity/confidence、vuln_class、analyzer、locations(`file:line`)、
-    data_flow、rationale、evidence、remediation。findings 为空时返回一份合法的
-    "未发现漏洞" 报告。severity/confidence 同时兼容枚举与字符串。
+    findings 按严重度降序(critical → high → medium → low → info)分组,并跨分组
+    全局连续编号;每条渲染标题、severity/confidence、vuln_class、analyzer、
+    locations(可点击 Markdown 链接)、data_flow、rationale、evidence、remediation。
+    findings 为空时返回一份合法的 "未发现漏洞" 报告。severity/confidence 同时兼容
+    枚举与字符串。位置链接以报告落盘目录(report_path 所在目录)为基准,解析到
+    repo_path 下的真实源码文件。
     """
     lines = _render_header(findings, state)
 
     if not findings:
         return "\n".join(lines).rstrip() + "\n"
 
+    repo_path = state["repo_path"]
+    report_dir = os.path.dirname(state["report_path"])
+
     lines.extend(["## Findings", ""])
 
     groups = _group_by_severity(findings)
+    index = 0
     for severity in _ordered_severities(groups):
         lines.extend([f"### {_severity_label(severity)}", ""])
-        for index, finding in enumerate(groups[severity], start=1):
-            lines.extend(_render_finding(finding, index))
+        for finding in groups[severity]:
+            index += 1
+            lines.extend(_render_finding(finding, index, repo_path, report_dir))
 
     return "\n".join(lines).rstrip() + "\n"
