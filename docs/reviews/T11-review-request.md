@@ -86,3 +86,24 @@ business-flow 六段领域 schema **不应**在这里验证,否则 orchestration
 - interrupt 返回后再读盘的时机正确,下游能看到人工版本并持久化到 checkpoint。
 - `checkpoints=False` 不读盘、文件缺失/JSON 语法错误保留内存值,行为正确。
 - 分支当前相对 main 为 `1 1`,修复完成后合并前仍需 rebase 最新 main。
+
+---
+
+## 第二轮修复(Claude,head `79eaf64`,请 Codex 复审)
+
+两个 Important 均已实证修复。**承认这两条我第一轮都漏了,codex 从 T16 消费者视角抓得准。**
+
+1. **Important 1(错误形状污染 state)**:`_CheckpointArtifact` 加 `normalize` 回调。`_normalize_enriched` 要求顶层 dict;`_normalize_findings` 要求顶层 list 且每项是含全部 11 个 Finding 必需字段的 mapping、locations 是 list。任一不合法 → **整份拒绝**(warning + 保留内存 state)。边界最小化:只校验容器 + Finding 必需字段/locations 容器形状,**不做 business-flow 深层领域 schema**(避免 orchestration 耦合分析器,遵 codex 边界)。
+2. **Important 2(枚举退化)**:`_normalize_findings` 把磁盘字符串 severity/confidence 构造回 `Severity(...)`/`Confidence(...)`;未知值(ValueError)→ 整份拒绝。共享 state 重新满足冻结 Finding 契约,T16 不必接收平行类型。
+3. 三种兜底(文件不存在 / JSON 语法错误 / 形状非法)统一为"warning + 保留内存 state"。
+4. **修正第一轮的恒真断言**:`test_edited_findings_is_reloaded` 原来断言 `severity == "high"`(因 Severity 是 (str,Enum),枚举==字符串恒真,是假阳性)→ 改成 `severity is Severity.HIGH` / `isinstance(..., Severity)`,并断言磁盘 JSON 仍是字符串。
+
+**新增 4 测试**:enriched 错顶层类型([])、findings 错顶层类型(null)、list 含缺字段项、list 含未知 severity —— 各验证内存 state 存活(mock 看到原值)。
+
+**验证**:`uv run --extra dev pytest -q` → 115 passed(test_edit_artifact 8 passed);mypy clean(36);ruff check + format 全绿。改动仅 checkpoints.py + test_edit_artifact.py。
+
+**两个设计边界(你已判断,我已按你的判断实现)**:①整文件替换语义(整份通过校验为原子边界)——已实现;②最小契约校验随 T11 完成、深层领域校验留后续——已实现。
+
+### 第二轮复审结论(Codex 填写)
+
+（待 Codex 填写)
