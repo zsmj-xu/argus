@@ -19,7 +19,8 @@
 - `argus/cli.py`(命令分发)
 
 **进行中的声明:**
-- **claude / T10**:改 `argus/cli.py`(continue 子命令加 `--set`/`--focus` 参数解析)+ 可能碰 `argus/orchestration/checkpoints.py`(把注入的 config 传进 resume payload)。只动参数注入相关,不碰分析器执行/图结构。
+- **claude / T10**(待审):改 `argus/cli.py`(continue 加 --set/--focus)。
+- **claude / T11**:改 `argus/orchestration/pipeline.py`(检查点放行后、下游节点执行前,从磁盘重新加载 enriched-graph.json / findings.json 覆盖内存 state)。与 T10 边界不同(T10 改 cli 参数解析,T11 改 pipeline 产物重载);两者若在 cli/pipeline 有重叠,合并时以各自 task 的核心改动为准。
 
 ---
 
@@ -58,7 +59,7 @@
 | T08 | injection/xss/auth/ssrf 分析器 | codex | T06 | M2 | ✅ done |
 | T09 | interrupt 检查点 + continue | claude | T05 | M3 | ✅ done |
 | T10 | 命令行参数注入 --set/--focus | claude | T09 | M3 | review⏳(待 Codex 评审) |
-| T11 | 改产物文件后 continue | claude | T09 | M3 | pending |
+| T11 | 改产物文件后 continue | claude | T09 | M3 | in_progress |
 | T12 | business-flow 富化器 | claude | T05 | M4 | ✅ done(T12F 已合并修复) |
 | **T12F** | **business-flow 修复(2轮:调用边/段内规整/node_id 消歧/schema 扩展/引用完整性/授权执行状态/嵌套规整)** | **claude** | **T12** | **M4** | **✅ done** |
 | T07F | 报告 Markdown 链接小修(2轮:链接解析基准+URL编码) | claude | T07 | M2 | ✅ done |
