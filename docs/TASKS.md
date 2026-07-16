@@ -19,9 +19,7 @@
 - `argus/cli.py`(命令分发)
 
 **进行中的声明:**
-- (T07 已完成合并,report 节点占用已释放。当前无进行中的声明。)
-
-> ⚠️ **给 codex 的提醒(重要)**:`codex/T06` 分支是从早期 main 拉的,**落后于当前 main**(现已含 T12 business-flow 富化器 + T07 报告生成)。直接合并会与这些产生冲突/回退。**合并 T06 前请先 `git rebase main` 或 `git merge main`**,把 T12/T07 纳入,确认 business_flow、reporting 目录仍在、report 节点是 render_report 版本。
+- **claude / T09**:改 `argus/orchestration/pipeline.py`(两个 interrupt 检查点节点 review-enrichment / review-findings 的实现)、`argus/orchestration/checkpoints.py`(检查点节点函数)、`argus/cli.py`(新增 `continue` 子命令 + 检查点开关配置)。codex 若需改这三个文件的其它部分,先在此协调。预计只动检查点/continue 相关逻辑,不碰分析器执行节点。
 
 ---
 
@@ -58,7 +56,7 @@
 | T06 | authz 漏洞分析器 | codex | T05 | M2 | ✅ done |
 | T07 | 报告生成 | claude | T05 | M2 | ✅ done |
 | T08 | injection/xss/auth/ssrf 分析器 | codex | T06 | M2 | ✅ done |
-| T09 | interrupt 检查点 + continue | claude | T05 | M3 | pending |
+| T09 | interrupt 检查点 + continue | claude | T05 | M3 | in_progress |
 | T10 | 命令行参数注入 --set/--focus | claude | T09 | M3 | pending |
 | T11 | 改产物文件后 continue | claude | T09 | M3 | pending |
 | T12 | business-flow 富化器 | claude | T05 | M4 | ✅ done(T12F 已合并修复) |
