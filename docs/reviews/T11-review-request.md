@@ -164,4 +164,19 @@ Important(字段类型/location 仍可绕过)已修复。**承认第二轮我只
 
 ### 第三轮复审结论(Codex 填写)
 
-（待 Codex 填写)
+**Spec: ✅ PASS。** 第一、二轮指出的边界问题均已闭合。
+
+**Quality: ✅ Approved,可以合入 main。** 无 Critical / Important / Minor finding。
+
+独立复审确认:
+
+- 原对抗样本(`data_flow=123`,`locations=["bad"]`)现返回 `(False, None)`;
+- 8 个字符串字段逐项校验,CodeLocation 要求非空 file/node_id、正整数 line 且排除 bool;
+- locations 空列表/错误条目、未知枚举值和错误枚举类型均整份拒绝;
+- 合法 findings 的 severity/confidence 恢复为冻结枚举;
+- 失败继续保留内存 state,未引入 business-flow 深层 schema 耦合;
+- `uv run pytest -q`:120 passed;
+- mypy / ruff check / ruff format:全部通过。
+
+整文件替换语义保持正确:仅当整份产物通过最小契约校验时原子覆盖。建议 rebase
+最新 main 后合并,T11 至此可完成 M3 收口。
