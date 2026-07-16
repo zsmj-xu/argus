@@ -19,7 +19,7 @@
 - `argus/cli.py`(命令分发)
 
 **进行中的声明:**
-- **claude / T09**:改 `argus/orchestration/pipeline.py`(两个 interrupt 检查点节点 review-enrichment / review-findings 的实现)、`argus/orchestration/checkpoints.py`(检查点节点函数)、`argus/cli.py`(新增 `continue` 子命令 + 检查点开关配置)。codex 若需改这三个文件的其它部分,先在此协调。预计只动检查点/continue 相关逻辑,不碰分析器执行节点。
+- **claude / T10**:改 `argus/cli.py`(continue 子命令加 `--set`/`--focus` 参数解析)+ 可能碰 `argus/orchestration/checkpoints.py`(把注入的 config 传进 resume payload)。只动参数注入相关,不碰分析器执行/图结构。
 
 ---
 
@@ -57,7 +57,7 @@
 | T07 | 报告生成 | claude | T05 | M2 | ✅ done |
 | T08 | injection/xss/auth/ssrf 分析器 | codex | T06 | M2 | ✅ done |
 | T09 | interrupt 检查点 + continue | claude | T05 | M3 | ✅ done |
-| T10 | 命令行参数注入 --set/--focus | claude | T09 | M3 | pending |
+| T10 | 命令行参数注入 --set/--focus | claude | T09 | M3 | in_progress |
 | T11 | 改产物文件后 continue | claude | T09 | M3 | pending |
 | T12 | business-flow 富化器 | claude | T05 | M4 | ✅ done(T12F 已合并修复) |
 | **T12F** | **business-flow 修复(2轮:调用边/段内规整/node_id 消歧/schema 扩展/引用完整性/授权执行状态/嵌套规整)** | **claude** | **T12** | **M4** | **✅ done** |
