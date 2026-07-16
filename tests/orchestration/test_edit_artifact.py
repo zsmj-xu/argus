@@ -34,6 +34,7 @@ from argus.contracts import (
 from argus.orchestration.checkpoints import (
     REVIEW_ENRICHMENT,
     REVIEW_FINDINGS,
+    _normalize_findings,
     make_checkpointer,
 )
 from argus.orchestration.pipeline import build_pipeline
@@ -444,3 +445,89 @@ def test_findings_list_with_unknown_severity_keeps_in_memory_state(tmp_path: Any
     assert findings[0]["title"] == "SQL injection in login"
     assert findings[0]["severity"] is Severity.HIGH
     assert any(record.levelno == logging.WARNING for record in caplog.records)
+
+
+# === _normalize_findings 的字段类型 / CodeLocation 形状对抗单测 ===
+# 边界层最小校验:字段存在还不够,类型也必须对,否则错误值进 state、报告层才崩。
+
+
+def _valid_finding() -> dict[str, Any]:
+    """一条满足 Finding 契约的合法 finding(severity/confidence 为磁盘上的字符串表示)。"""
+    return {
+        "id": "authz:x",
+        "analyzer": "authz",
+        "vuln_class": "authz",
+        "title": "t",
+        "severity": "high",
+        "confidence": "medium",
+        "locations": [{"file": "a.py", "line": 1, "node_id": "a.py::h"}],
+        "data_flow": "",
+        "rationale": "r",
+        "evidence": "e",
+        "remediation": "m",
+    }
+
+
+def test_normalize_accepts_valid_finding_and_restores_enums() -> None:
+    ok, normalized = _normalize_findings([_valid_finding()])
+    assert ok is True
+    assert normalized[0]["severity"] is Severity.HIGH
+    assert normalized[0]["confidence"] is Confidence.MEDIUM
+
+
+def test_normalize_rejects_wrong_str_field_types() -> None:
+    """codex 对抗样本:字段存在但类型全错(int)→ 整份拒绝,不污染 state。"""
+    bad = {
+        "id": 1,
+        "analyzer": 2,
+        "vuln_class": 3,
+        "title": 4,
+        "severity": "high",
+        "confidence": "high",
+        "locations": ["bad"],
+        "data_flow": 123,
+        "rationale": 456,
+        "evidence": 789,
+        "remediation": 0,
+    }
+    assert _normalize_findings([bad]) == (False, None)
+
+
+def test_normalize_rejects_single_wrong_str_field() -> None:
+    """只有 data_flow 是 int(其余合法)也整份拒绝——报告 data_flow.strip() 会崩。"""
+    bad = _valid_finding()
+    bad["data_flow"] = 123
+    assert _normalize_findings([bad]) == (False, None)
+
+
+def test_normalize_rejects_bad_location_shapes() -> None:
+    """CodeLocation 各种非法形态都整份拒绝。"""
+    f1 = _valid_finding()
+    f1["locations"] = ["bad"]  # 不是 dict
+    assert _normalize_findings([f1]) == (False, None)
+
+    f2 = _valid_finding()
+    f2["locations"] = [{"file": "", "line": 1, "node_id": "n"}]  # file 空串
+    assert _normalize_findings([f2]) == (False, None)
+
+    f3 = _valid_finding()
+    f3["locations"] = [{"file": "a.py", "line": -1, "node_id": "n"}]  # line 非正
+    assert _normalize_findings([f3]) == (False, None)
+
+    f4 = _valid_finding()
+    f4["locations"] = [{"file": "a.py", "line": True, "node_id": "n"}]  # line 是 bool
+    assert _normalize_findings([f4]) == (False, None)
+
+    f5 = _valid_finding()
+    f5["locations"] = []  # 空 list
+    assert _normalize_findings([f5]) == (False, None)
+
+
+def test_normalize_rejects_bad_enum_value_and_type() -> None:
+    f1 = _valid_finding()
+    f1["severity"] = "bogus"  # 未知枚举值 → ValueError → 拒绝
+    assert _normalize_findings([f1]) == (False, None)
+
+    f2 = _valid_finding()
+    f2["severity"] = 123  # Severity(123) → TypeError → 拒绝
+    assert _normalize_findings([f2]) == (False, None)

@@ -56,7 +56,7 @@ class _CheckpointArtifact(NamedTuple):
 
 
 # report / 评测必读的 Finding 字段(见 argus/contracts.py 的 Finding TypedDict)。
-# 边界层只校验这层通用契约(字段存在 + locations 是容器),不深入 business-flow 等分析器领域 schema。
+# 边界层只校验这层通用契约(字段存在 + 类型正确 + locations 形状),不深入 business-flow 等分析器领域 schema。
 _REQUIRED_FINDING_FIELDS = (
     "id",
     "analyzer",
@@ -65,6 +65,19 @@ _REQUIRED_FINDING_FIELDS = (
     "severity",
     "confidence",
     "locations",
+    "data_flow",
+    "rationale",
+    "evidence",
+    "remediation",
+)
+
+# Finding 里契约要求为 str 的字段。severity/confidence 走枚举恢复、locations 走 CodeLocation
+# 形状校验,故不在此列;它们的类型分别由枚举构造与 _is_valid_location 兜住。
+_STR_FINDING_FIELDS = (
+    "id",
+    "analyzer",
+    "vuln_class",
+    "title",
     "data_flow",
     "rationale",
     "evidence",
@@ -83,14 +96,49 @@ def _normalize_enriched(value: Any) -> tuple[bool, Any]:
     return (True, value)
 
 
+def _is_positive_int(value: Any) -> bool:
+    """正整数校验,显式排除 bool。
+
+    Python 里 bool 是 int 子类(isinstance(True, int) 为 True),但 True/False 当行号
+    毫无意义;用 type(value) is int 精确匹配,把 bool 挡在外面。
+    """
+    return type(value) is int and value > 0
+
+
+def _is_nonempty_str(value: Any) -> bool:
+    """非空字符串校验。"""
+    return isinstance(value, str) and value != ""
+
+
+def _is_valid_location(location: Any) -> bool:
+    """CodeLocation 形状校验(见 argus/contracts.py 的 CodeLocation TypedDict)。
+
+    每条 location 必须是 mapping,且:
+    - file:非空 str。
+    - node_id:非空 str(强制锚回 codegraph 节点)。
+    - line:正整数,排除 bool。
+    下游报告用 location["file"] / location["line"] 索引,字符串或 bool 都会崩;在边界层拦掉。
+    """
+    if not isinstance(location, dict):
+        return False
+    if not _is_nonempty_str(location.get("file")):
+        return False
+    if not _is_nonempty_str(location.get("node_id")):
+        return False
+    return _is_positive_int(location.get("line"))
+
+
 def _normalize_findings(value: Any) -> tuple[bool, Any]:
     """REVIEW_FINDINGS 规整器:顶层必须是 list,每项是满足 Finding 形状的 mapping,并恢复枚举。
 
     通用契约校验(不碰具体分析器领域 schema):
     - 顶层是 list。
     - 每项是 mapping,且 _REQUIRED_FINDING_FIELDS 全部存在。
-    - locations 是 list(容器形状)。
-    - severity/confidence 的磁盘字符串能构造回 Severity/Confidence 枚举(未知值 → 拒绝)。
+    - _STR_FINDING_FIELDS(id/analyzer/vuln_class/title/data_flow/rationale/evidence/remediation)
+      每个都是 str —— 否则报告在 data_flow.strip() 等处崩。
+    - locations 是非空 list,每项是满足 CodeLocation 形状的 mapping(file/node_id 非空 str、
+      line 正整数排除 bool)—— 否则报告在 location["file"] 等处崩。
+    - severity/confidence 的磁盘字符串能构造回 Severity/Confidence 枚举(未知值 / 错误类型 → 拒绝)。
 
     任一项不合法 → 整份拒绝(返回 (False, None)),调用方保留内存 state,不做部分替换。
     枚举恢复让共享 state 满足 Finding 契约(而非平行的字符串类型),T16 评测据此消费。
@@ -104,14 +152,23 @@ def _normalize_findings(value: Any) -> tuple[bool, Any]:
             return (False, None)
         if any(field not in item for field in _REQUIRED_FINDING_FIELDS):
             return (False, None)
-        if not isinstance(item["locations"], list):
+
+        # str 字段:类型错(如 id 是 int)会在报告层崩,边界层整份拒绝。
+        if any(not isinstance(item[field], str) for field in _STR_FINDING_FIELDS):
+            return (False, None)
+
+        # locations:非空 list,且每项满足 CodeLocation 形状。
+        locations = item["locations"]
+        if not isinstance(locations, list) or len(locations) == 0:
+            return (False, None)
+        if any(not _is_valid_location(location) for location in locations):
             return (False, None)
 
         try:
             severity = Severity(item["severity"])
             confidence = Confidence(item["confidence"])
-        except ValueError:
-            # 未知枚举值(如 severity="bogus"):视为无效,整份拒绝。
+        except (ValueError, TypeError):
+            # 未知枚举值(severity="bogus")或错误类型(severity=123 → TypeError):整份拒绝。
             return (False, None)
 
         normalized.append({**item, "severity": severity, "confidence": confidence})
