@@ -1,0 +1,97 @@
+{
+  "target": "crAPI (workshop service)",
+  "repo": "https://github.com/OWASP/crAPI",
+  "service_path": "services/workshop",
+  "note": "crAPI 是多语言多服务大仓;设计文档限定只做 Python,故本 ground-truth 聚焦 Python/Django 的 workshop 服务(services/workshop)。in-scope 条目依据源码实证(handler 中缺失的 ownership/role/trust_boundary/authentication 校验),对照 crAPI 官方漏洞面(BOLA/BFLA/mass-assignment)。in_scope=false 的是同仓存在但属注入/SSRF/路径穿越等通用漏洞,设计文档明确不做,仅记录参考,不计入指标。replay 类:workshop 的 apply_coupon 已按 (user_id, coupon_code) 去重,同一用户无法重放,故本服务内没有干净的 in-scope replay 样本——如实记录,不硬凑。",
+  "invariant_kinds_in_scope": ["ownership", "authentication", "role", "replay", "trust_boundary"],
+  "vulnerabilities": [
+    {
+      "id": "crapi-bola-order-get",
+      "in_scope": true,
+      "invariant_kind": "ownership",
+      "vuln_type": "BOLA / IDOR",
+      "location": "crapi/shop/views.py",
+      "handler": "OrderControlView.get",
+      "endpoint": "GET /api/shop/orders/{order_id}",
+      "description": "OrderControlView.get 用 path 参数 order_id 直接 Order.objects.get(id=order_id),既没有 @jwt_auth_required 也不校验 order.user == 当前用户(把 user 直接改写成 order.user)。任意人可读他人订单及其关联的用户信息/支付数据。对比同类的 put 分支有 `if user != order.user` 校验,get 却没有。",
+      "source": "crapi/shop/views.py:109 OrderControlView.get 无 ownership 校验;put(:236)有 `if user != order.user` 可作对照"
+    },
+    {
+      "id": "crapi-bfla-admin-users",
+      "in_scope": true,
+      "invariant_kind": "role",
+      "vuln_type": "BFLA / 功能级越权",
+      "location": "crapi/user/views.py",
+      "handler": "AdminUserView.get",
+      "endpoint": "GET /api/management/users/all",
+      "description": "AdminUserView 返回全体用户详情,属管理员级功能,但只有 @jwt_auth_required、缺少 role/admin 校验(未检查 user.role)。任意已登录普通用户即可拉取所有用户信息。",
+      "source": "crapi/user/views.py:41 AdminUserView.get 仅 jwt,无 role 校验; url: crapi/user/urls.py:25 users/all"
+    },
+    {
+      "id": "crapi-bfla-servicerequest-status",
+      "in_scope": true,
+      "invariant_kind": "role",
+      "vuln_type": "BFLA / 功能级越权",
+      "location": "crapi/mechanic/views.py",
+      "handler": "ServiceRequestView.put",
+      "endpoint": "PUT /api/mechanic/service_requests/{service_request_id}",
+      "description": "ServiceRequestView.put 更新服务工单状态,只有 @jwt_auth_required,不校验调用者是否为机械师(role==MECH)也不校验归属。对比同文件 ServiceCommentView.post 有 `if user.role != User.ROLE_CHOICES.MECH` 的 role 校验,此处缺失,任意用户可改任意工单状态。",
+      "source": "crapi/mechanic/views.py:347 ServiceRequestView.put 无 role 校验;ServiceCommentView.post(:304)有 role 校验可作对照"
+    },
+    {
+      "id": "crapi-massassign-coupon-amount",
+      "in_scope": true,
+      "invariant_kind": "trust_boundary",
+      "vuln_type": "Mass assignment / 客户端可控金额",
+      "location": "crapi/shop/views.py",
+      "handler": "ApplyCouponView.post",
+      "endpoint": "POST /api/shop/apply_coupon",
+      "description": "ApplyCouponView 直接把请求体里的 amount 加到用户可用额度: `user_details.available_credit += coupon_request_body['amount']`,而没有以服务端 Coupon 记录中的真实面额为准。服务端不得采信客户端传入的金额字段,客户端可任意抬高充值额度。",
+      "source": "crapi/shop/views.py:425 `user_details.available_credit += coupon_request_body['amount']`"
+    },
+    {
+      "id": "crapi-auth-receive-report",
+      "in_scope": true,
+      "invariant_kind": "authentication",
+      "vuln_type": "Missing authentication",
+      "location": "crapi/mechanic/views.py",
+      "handler": "ReceiveReportView.get",
+      "endpoint": "GET /api/mechanic/receive_report",
+      "description": "ReceiveReportView.get 创建 ServiceRequest(改状态的写操作),但没有 @jwt_auth_required,任意未认证请求即可为任意 vin/机械师创建服务工单。",
+      "source": "crapi/mechanic/views.py:169 ReceiveReportView.get 无 @jwt_auth_required 装饰器"
+    },
+    {
+      "id": "crapi-sqli-coupon",
+      "in_scope": false,
+      "invariant_kind": "n/a",
+      "vuln_type": "SQL Injection",
+      "location": "crapi/shop/views.py",
+      "handler": "ApplyCouponView.post",
+      "endpoint": "POST /api/shop/apply_coupon",
+      "description": "apply_coupon 用字符串拼接构造 SQL(coupon_code 直接进 SQL),存在注入。属注入类,由通用扫描器负责,不在范围内,仅记录。",
+      "source": "crapi/shop/views.py:388 raw cursor.execute 字符串拼接"
+    },
+    {
+      "id": "crapi-ssrf-contact-mechanic",
+      "in_scope": false,
+      "invariant_kind": "n/a",
+      "vuln_type": "SSRF",
+      "location": "crapi/merchant/views.py",
+      "handler": "ContactMechanicView.post",
+      "endpoint": "POST /api/merchant/contact_mechanic",
+      "description": "contact_mechanic 直接 requests.get(request_data['mechanic_api']),用户完全可控目标 URL,构成 SSRF。属通用漏洞,不在范围内,仅记录。",
+      "source": "crapi/merchant/views.py:84-92 requests.get(request_url) 目标来自请求体"
+    },
+    {
+      "id": "crapi-pathtraversal-download-report",
+      "in_scope": false,
+      "invariant_kind": "n/a",
+      "vuln_type": "Path traversal (缓解中)",
+      "location": "crapi/mechanic/views.py",
+      "handler": "DownloadReportView.get",
+      "endpoint": "GET /api/mechanic/download_report",
+      "description": "download_report 用用户传入 filename 拼接文件路径读取,虽有 validate_filename 白名单缓解,仍属文件读取/穿越类。不在业务不变量范围内,仅记录。",
+      "source": "crapi/mechanic/views.py:381 DownloadReportView.get filename 参数"
+    }
+  ]
+}

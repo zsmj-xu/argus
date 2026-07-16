@@ -1,0 +1,141 @@
+openapi: 3.0.0
+info:
+  title: flowmart API
+  version: "1.0"
+  description: >
+    钱包 + 二手市场 API。多步业务流逻辑漏洞靶场。
+    security 段表示该路由"意图上"是否需要登录;handler 内部的 ownership/role/
+    幂等校验是否写对,需读源码判断(这正是漏洞所在)。
+
+components:
+  securitySchemes:
+    tokenAuth:
+      type: http
+      scheme: bearer
+
+paths:
+  /users/register:
+    post:
+      summary: 注册新用户
+      operationId: api.users.register
+      responses:
+        '200': {description: ok}
+
+  /users/login:
+    post:
+      summary: 登录
+      operationId: api.users.login
+      responses:
+        '200': {description: ok}
+
+  /users/me:
+    get:
+      summary: 查看自己的资料
+      security: [{tokenAuth: []}]
+      operationId: api.users.get_me
+      responses:
+        '200': {description: ok}
+
+  /users:
+    get:
+      summary: 列出所有用户(管理功能)
+      security: [{tokenAuth: []}]
+      operationId: api.users.list_users
+      responses:
+        '200': {description: ok}
+
+  /wallets/{user_id}:
+    get:
+      summary: 查看某钱包余额
+      operationId: api.users.get_wallet
+      parameters:
+        - {name: user_id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200': {description: ok}
+
+  /listings:
+    get:
+      summary: 浏览在售商品
+      operationId: api.listings.list_listings
+      responses:
+        '200': {description: ok}
+    post:
+      summary: 挂出商品
+      security: [{tokenAuth: []}]
+      operationId: api.listings.create_listing
+      responses:
+        '200': {description: ok}
+
+  /listings/{listing_id}:
+    put:
+      summary: 更新商品
+      security: [{tokenAuth: []}]
+      operationId: api.listings.update_listing
+      parameters:
+        - {name: listing_id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200': {description: ok}
+
+  /orders:
+    post:
+      summary: 下单
+      security: [{tokenAuth: []}]
+      operationId: api.orders.create_order
+      responses:
+        '200': {description: ok}
+
+  /orders/{order_id}/pay:
+    post:
+      summary: 付款
+      security: [{tokenAuth: []}]
+      operationId: api.orders.pay_order
+      parameters:
+        - {name: order_id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200': {description: ok}
+
+  /orders/{order_id}/ship:
+    post:
+      summary: 发货
+      security: [{tokenAuth: []}]
+      operationId: api.orders.ship_order
+      parameters:
+        - {name: order_id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200': {description: ok}
+
+  /orders/{order_id}/return:
+    post:
+      summary: 申请退货
+      security: [{tokenAuth: []}]
+      operationId: api.orders.return_order
+      parameters:
+        - {name: order_id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200': {description: ok}
+
+  /orders/{order_id}/refund:
+    post:
+      summary: 退款
+      security: [{tokenAuth: []}]
+      operationId: api.orders.refund_order
+      parameters:
+        - {name: order_id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200': {description: ok}
+
+  /coupons/issue:
+    post:
+      summary: 签发优惠券(管理功能)
+      security: [{tokenAuth: []}]
+      operationId: api.coupons.issue_coupon
+      responses:
+        '200': {description: ok}
+
+  /coupons/redeem:
+    post:
+      summary: 兑换优惠券
+      security: [{tokenAuth: []}]
+      operationId: api.coupons.redeem_coupon
+      responses:
+        '200': {description: ok}

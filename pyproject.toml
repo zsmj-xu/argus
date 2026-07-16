@@ -15,8 +15,13 @@ dev = ["pytest>=8", "ruff==0.15.21", "mypy>=1.11", "types-PyYAML>=6"]
 [project.scripts]
 argus = "argus.cli:main"
 
+[tool.setuptools.packages.find]
+include = ["argus*"]
+exclude = ["targets*", "ground_truth*", "tests*"]
+
 [tool.ruff]
 line-length = 120
+extend-exclude = ["targets"]
 
 [tool.mypy]
 python_version = "3.11"

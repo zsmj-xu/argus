@@ -1,0 +1,53 @@
+{
+  "target": "crAPI community (Go/gorilla-mux)",
+  "repo": "https://github.com/OWASP/crAPI",
+  "service_path": "services/community",
+  "note": "crAPI 的 community 是 Go(gorilla/mux)服务。这份 ground-truth 聚焦落在 logic-graph 5 类业务不变量内、且能从本服务源码判定的逻辑漏洞。community 的鉴权中间件 SetMiddlewareAuthentication 只校验 token(authentication),完全不看 role/归属,所以 role/ownership 类漏洞由各 handler 自负——而它们大多没做。in_scope=false 的是注入类(NoSQL/SQLi)等通用漏洞,设计文档明确不做,仅记录。",
+  "invariant_kinds_in_scope": ["ownership", "authentication", "role", "replay", "trust_boundary"],
+  "vulnerabilities": [
+    {
+      "id": "community-coupon-bfla-role",
+      "in_scope": true,
+      "invariant_kind": "role",
+      "vuln_type": "BFLA / 功能级越权",
+      "location": "api/controllers/coupon_controller.go",
+      "handler": "AddNewCoupon",
+      "endpoint": "POST /community/api/v2/coupon/new-coupon",
+      "description": "创建优惠券属于管理/特权功能,应仅管理员可调。但路由只经过 SetMiddlewareAuthentication(仅校验 token 是否有效),AddNewCoupon 内部不校验调用者 role,任意已登录普通用户即可凭空创建任意面额优惠券。",
+      "source": "api/controllers/coupon_controller.go:32 AddNewCoupon 无 role 校验;鉴权中间件 api/middlewares/middlewares.go:56 只验 token"
+    },
+    {
+      "id": "community-coupon-amount-trust",
+      "in_scope": true,
+      "invariant_kind": "trust_boundary",
+      "vuln_type": "Mass assignment / 客户端可控面额",
+      "location": "api/controllers/coupon_controller.go",
+      "handler": "AddNewCoupon",
+      "endpoint": "POST /community/api/v2/coupon/new-coupon",
+      "description": "优惠券的 Amount 直接来自请求体 JSON(json.Unmarshal 到 coupon 后除了非空校验没有任何范围/权限约束就 SaveCoupon),服务端不得采信客户端传入的金额字段,客户端可任意设定优惠券面额。",
+      "source": "api/controllers/coupon_controller.go:43-57 coupon.Amount 取自 body 后直接保存;models/coupon.go:46 Validate 仅查非空"
+    },
+    {
+      "id": "community-comment-ownership",
+      "in_scope": true,
+      "invariant_kind": "ownership",
+      "vuln_type": "BOLA / 越权评论",
+      "location": "api/controllers/post_controller.go",
+      "handler": "Comment",
+      "endpoint": "POST /community/api/v2/community/posts/{postID}/comment",
+      "description": "Comment 用请求路径里的 postID 直接定位帖子并写入评论,不校验该 postID 是否存在、是否对当前用户可见/可评论,任意登录用户可对任意 postID(含枚举得到的他人私有帖)发表评论。缺少针对 post 的归属/可见性校验。",
+      "source": "api/controllers/post_controller.go:157 Comment 用 vars[\"postID\"] 直接 CommentOnPost,无归属校验"
+    },
+    {
+      "id": "community-getpostsbytitle-nosqli",
+      "in_scope": false,
+      "invariant_kind": "n/a",
+      "vuln_type": "NoSQL Injection",
+      "location": "api/controllers/post_controller.go",
+      "handler": "GetPostsByTitle",
+      "endpoint": "GET /community/api/v2/community/posts/search",
+      "description": "按 title 查询构造 Mongo 查询,存在 NoSQL 注入风险。属注入类,由通用扫描器负责,不在业务不变量范围内,仅记录。",
+      "source": "api/controllers/post_controller.go:144 FindPostsByTitle(title 来自 query)"
+    }
+  ]
+}
