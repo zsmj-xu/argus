@@ -35,7 +35,11 @@
 
 **影响 T17/T18**:这是给对照实验打分的地基。handler 子串误配会让弱 analyzer 蹭到 TP,recall 虚高,直接**污染对照结论**(无法区分"真检出"和"文本里提了一嘴")。flowmart 全部 6 条都靠 handler fallback,正是最脆弱的资产。**标 Critical。**
 
-**建议**:token 化后按分隔切词做集合成员判断(`handler in token_set`),而非裸子串;并优先用 `node_id`(结构化、含真实 handler 名)而非 title/evidence 自由文本做锚。
+**建议**:token 化后按分隔切词做集合成员判断(`handler in token_set`),而非裸子串。
+
+> **修订(第二轮项目整体审核补充)**:原建议里"优先用 `node_id`(含真实 handler 名)做锚"的前提**有误,勿照做**。核查真实 codegraph 数据(`targets/VAmPI/.codegraph/codegraph.db`),function/method 节点 id 形如 `function:1682a981641aa8ebc0e9623f49e0af4f|get_all_books`——handler 名在 `|` 分隔符之后,**node_id 主体是内容哈希,不是可直接子串匹配的结构化名**。因此:
+> 1. 正确修法是**用 finding 的 `location.node_id` 反查 codegraph 取该节点的 `name`/`qualified_name`**,再和 GT handler 做 token 集合匹配;而非对 node_id 字符串裸锚。
+> 2. `tests/eval/test_score.py:212` 的 `test_real_ground_truth_entries_are_matchable` 用 `node_id=f"function:{location}:{handler}"` **伪造了含明文 handler 名的 node_id**,是假绿灯——真实分析器产出的哈希 node_id 会全部落空。补 I3 时必须把此测试改成真实 node_id 形态(`function:<hash>|<name>`)。
 
 ---
 
@@ -77,13 +81,25 @@
 ---
 
 ## 给 codex 的最小修复清单(解锁合入)
-1. **C1(必修)**:handler 匹配改词边界 / token 集合成员,优先锚 `node_id`;补 handler 子串误配负例测试。
-2. **I3(必修)**:补三条负例——handler 缺失判 FN、handler 子串不误配、business-logic 跨 invariant 不近行误配。
-3. I1/I2 建议修(收紧 business-logic 语义锚定 + 路径至少对齐一段目录),或至少在 T17/T18 文档标注为已知松弛点。
+1. **C1(必修)**:handler 匹配改词边界 / token 集合成员。**用 node_id 反查 codegraph 拿 `name` 再 token 匹配**(见 C1 修订块,勿裸锚 node_id 字符串);补 handler 子串误配负例测试。
+2. **I3(必修)**:补三条负例——handler 缺失判 FN、handler 子串不误配、business-logic 跨 invariant 不近行误配;并把 `test_real_ground_truth_entries_are_matchable` 的伪造 node_id 改成真实哈希形态(见 C2)。
+3. **I4(建议必修)**:`_anchor_quality`(`score.py:199-207`)对 `title`/`data_flow`/`rationale`/`evidence`/`node_id` 缺键直接 KeyError,对外部 findings.json 无防御——评测地基应对畸形输入稳健,改用 `.get(...)`。
+4. I1/I2 建议修(收紧 business-logic 语义锚定 + 路径至少对齐一段目录),或至少在 T17/T18 文档标注为已知松弛点。
 
 算法骨架(增广匹配、一对一、决定论、in_scope、零分母)无需改动,实现正确。
 
 ---
 
+## 第二轮项目整体审核补充(6 视角并行审计)
+
+本份评审最初只看了 `codex/T16` 分支。项目整体审核后补充以下与评测可信度直接相关的新发现:
+
+- **C0 · eval 代码尚未合入 main,C1/I3 仍未修**:`git merge-base --is-ancestor bef8315 main` = NOT on main。`codex/T16`、`codex/T16-fix`、`codex/T17` 三分支的 `score.py` blob 哈希完全相同(`0578af6…`),即 "T16-fix" 分支**没有任何修复提交**。**任何基于当前代码跑出的 T17/T18 数字都建立在未修复的评分器上,不可采信。** 合入 T17 的前置就是先真正落地 C1+I3+C2 修复。
+- **C2 · C1 原修复建议前提错误**(已在 C1 修订块详述):真实 node_id 是 `function:<hash>|<name>`,不含可裸锚的明文 handler;测试用伪造 node_id 造假绿灯。
+- **I5 · C1 的实际暴露面 = flowmart 6 条**:实测 crapi(5)/vampi(4)/community(3) 因 source 带行号走 LINE-ANCHOR,只有 flowmart 6 条走 HANDLER-FALLBACK(其 GT 全无行号且 `api/users.py` 同文件三 handler)。**给 flowmart 的 GT 补行号即可让它脱离 fallback、直接绕开 C1**,是成本最低的止血法。
+- **确定性复核认同**:`score.py` 纯确定性(无 LLM/无随机/enumerate+显式 sort,不依赖 dict 顺序),增广匹配算法正确。
+
+---
+
 ## 评审裁定
-**Spec ✅ / Quality 需修改。** 修完 C1 + I3 后可合入并解锁 T17。
+**Spec ✅ / Quality 需修改。** 修完 C1(按修订后的正确方案)+ I3 + C2 测试修正后可合入并解锁 T17。**注意 C0:目前 eval 尚未上主干,修复动作尚未发生。**
