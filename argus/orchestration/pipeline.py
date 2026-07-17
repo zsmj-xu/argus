@@ -42,6 +42,7 @@ from argus.orchestration.checkpoints import (
     review_findings,
 )
 from argus.reporting.report import render_report
+from argus.source import strip_source
 
 # 节点名常量(与 completed_nodes 里记录的名字一致)。
 NODE_BUILD_GRAPH = "build_graph"
@@ -51,10 +52,7 @@ NODE_REPORT = "report"
 
 
 class _FileSourceAccess:
-    """最小 SourceAccess 实现:按 repo_path 读文件(可选行范围)。
-
-    M1 只做原样读取;stripped 模式的注释/docstring 剥离留待后续任务。
-    """
+    """按 repo_path 读文件;STRIPPED 模式先整文件剥离再按原行号切片。"""
 
     def __init__(self, repo_path: str, mode: SourceMode) -> None:
         self.repo_path = repo_path
@@ -63,7 +61,11 @@ class _FileSourceAccess:
     def read(self, path: str, start: int | None = None, end: int | None = None) -> str:
         abs_path = path if os.path.isabs(path) else os.path.join(self.repo_path, path)
         with open(abs_path, encoding="utf-8", errors="replace") as handle:
-            lines = handle.readlines()
+            text = handle.read()
+
+        if self.mode is SourceMode.STRIPPED:
+            text = strip_source(path, text)
+        lines = text.splitlines(keepends=True)
 
         if start is None and end is None:
             return "".join(lines)
