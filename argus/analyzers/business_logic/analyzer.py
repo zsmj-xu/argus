@@ -44,6 +44,7 @@ class BusinessLogicAnalyzer(ShannonAnalyzerBase):
         resources = _dict_items(enriched.get("resources"))
         operations = _dict_items(enriched.get("operations"))
         edges = _dict_items(enriched.get("edges"))
+        invariants = _dict_items(enriched.get("invariants")) if _invariants_enabled(ctx["config"]) else []
         settings = self._settings(ctx["config"])
         source_chars = self._positive_int(settings.get("source_chars"), _DEFAULT_SOURCE_CHARS)
         explore_chars = self._positive_int(settings.get("explore_chars"), _DEFAULT_EXPLORE_CHARS)
@@ -58,6 +59,7 @@ class BusinessLogicAnalyzer(ShannonAnalyzerBase):
                 operations,
                 edges,
                 flows,
+                invariants,
             )
             codegraph_context, allowed_node_ids = self._verified_codegraph_context(
                 ctx,
@@ -67,6 +69,7 @@ class BusinessLogicAnalyzer(ShannonAnalyzerBase):
             )
             if not allowed_node_ids:
                 continue
+            _retain_verified_invariants(semantic_graph, set(allowed_node_ids))
             units.append(
                 {
                     "endpoint_ids": component,
@@ -143,6 +146,34 @@ def _dict_items(value: Any) -> list[dict[str, Any]]:
     return [cast(dict[str, Any], item) for item in value if isinstance(item, dict)]
 
 
+def _invariants_enabled(config: dict[str, Any]) -> bool:
+    invariant_config = config.get("invariant")
+    if isinstance(invariant_config, dict) and invariant_config.get("enabled") is False:
+        return False
+    analyzers = config.get("analyzers")
+    if not isinstance(analyzers, dict):
+        return False
+    enrichment = analyzers.get("enrichment")
+    return isinstance(enrichment, list) and "invariant" in enrichment
+
+
+def _retain_verified_invariants(semantic_graph: dict[str, Any], allowed_node_ids: set[str]) -> None:
+    raw = semantic_graph.get("invariants")
+    if not isinstance(raw, list):
+        return
+    verified = [
+        item
+        for item in raw
+        if isinstance(item, dict)
+        and isinstance(item.get("handler_node_id"), str)
+        and item.get("handler_node_id") in allowed_node_ids
+    ]
+    if verified:
+        semantic_graph["invariants"] = verified
+    else:
+        semantic_graph.pop("invariants", None)
+
+
 def _index_by_id(items: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     result: dict[str, dict[str, Any]] = {}
     for item in items:
@@ -199,6 +230,7 @@ def _component_semantics(
     operations: list[dict[str, Any]],
     edges: list[dict[str, Any]],
     flows: list[dict[str, Any]],
+    invariants: list[dict[str, Any]],
 ) -> tuple[dict[str, Any], list[str]]:
     """Select the semantic subgraph reachable from the component's endpoint ids."""
     selected_ids = set(component)
@@ -233,15 +265,26 @@ def _component_semantics(
         if isinstance(node_id, str) and node_id:
             node_ids.append(node_id)
 
+    component_node_ids = set(node_ids)
+    selected_invariants = [
+        item
+        for item in invariants
+        if isinstance(item.get("handler_node_id"), str) and item.get("handler_node_id") in component_node_ids
+    ]
+
+    semantic_graph: dict[str, Any] = {
+        "endpoints": selected_endpoints,
+        "handlers": selected_handlers,
+        "resources": selected_resources,
+        "operations": selected_operations,
+        "edges": selected_edges,
+        "business_flows": selected_flows,
+    }
+    if selected_invariants:
+        semantic_graph["invariants"] = selected_invariants
+
     return (
-        {
-            "endpoints": selected_endpoints,
-            "handlers": selected_handlers,
-            "resources": selected_resources,
-            "operations": selected_operations,
-            "edges": selected_edges,
-            "business_flows": selected_flows,
-        },
+        semantic_graph,
         node_ids,
     )
 

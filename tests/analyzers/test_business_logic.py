@@ -216,6 +216,79 @@ def test_finds_price_tampering_with_enrichment_and_real_anchor() -> None:
     assert "server-side" in llm.system
 
 
+def test_related_handler_invariant_is_supplied_to_business_logic_prompt() -> None:
+    enriched = _enriched()
+    enriched["invariants"] = [
+        {
+            "id": "inv-refund-replay",
+            "kind": "replay",
+            "statement": "Refund must be idempotent",
+            "handler_node_id": "api/orders.py::refund",
+            "enforced_by": None,
+        }
+    ]
+    ctx, llm = _ctx(
+        json.dumps({"findings": []}),
+        enriched=enriched,
+        config={"analyzers": {"enrichment": ["business-flow", "invariant"]}},
+    )
+
+    ANALYZER.run(ctx)
+
+    assert len(llm.prompts) == 1
+    assert '"invariants": [' in llm.prompts[0]
+    assert "Refund must be idempotent" in llm.prompts[0]
+
+
+def test_invariants_can_be_disabled_without_leaving_stale_prompt_data() -> None:
+    enriched = _enriched()
+    enriched["invariants"] = [
+        {
+            "id": "stale",
+            "kind": "ownership",
+            "statement": "STALE INVARIANT MUST NOT LEAK",
+            "handler_node_id": "api/orders.py::checkout",
+        }
+    ]
+    ctx, llm = _ctx(
+        json.dumps({"findings": []}),
+        enriched=enriched,
+        config={
+            "analyzers": {"enrichment": ["business-flow"]},
+            "invariant": {"enabled": False},
+        },
+    )
+
+    ANALYZER.run(ctx)
+
+    assert '"invariants":' not in llm.prompts[0]
+    assert "STALE INVARIANT MUST NOT LEAK" not in llm.prompts[0]
+
+
+def test_invariant_handler_must_survive_codegraph_verification() -> None:
+    enriched = _enriched()
+    enriched["handlers"].append({"id": "h-ghost", "name": "ghost", "node_id": "ghost.py::handler"})
+    enriched["edges"].append({"from": "ep-checkout", "rel": "handled_by", "to": "h-ghost"})
+    enriched["invariants"] = [
+        {
+            "id": "inv-ghost",
+            "kind": "role",
+            "statement": "UNVERIFIED EXTERNAL INVARIANT",
+            "handler_node_id": "ghost.py::handler",
+        }
+    ]
+    ctx, llm = _ctx(
+        json.dumps({"findings": []}),
+        enriched=enriched,
+        config={"analyzers": {"enrichment": ["business-flow", "invariant"]}},
+    )
+
+    ANALYZER.run(ctx)
+
+    assert "UNVERIFIED EXTERNAL INVARIANT" not in llm.prompts[0]
+    assert '"invariants":' not in llm.prompts[0]
+
+
 def test_related_endpoints_stay_in_one_unit_and_allow_cross_handler_locations() -> None:
     cross_handler = _finding(
         locations=[
@@ -295,6 +368,24 @@ def test_disconnected_flows_are_batched_without_truncation() -> None:
             }
             for index in range(3)
         ],
+        "invariants": [
+            {
+                "id": f"inv-{index}",
+                "kind": "ownership",
+                "statement": f"ONLY COMPONENT {index}",
+                "handler_node_id": node["id"],
+            }
+            for index, node in enumerate(nodes)
+        ]
+        + [
+            {
+                "id": "inv-external",
+                "kind": "role",
+                "statement": "ADMIN EXTERNAL MUST NOT LEAK",
+                "handler": "handler_0",
+                "handler_node_id": "admin/ops.py::delete_all",
+            }
+        ],
     }
     ctx, llm = _ctx(
         json.dumps({"findings": []}),
@@ -302,10 +393,17 @@ def test_disconnected_flows_are_batched_without_truncation() -> None:
         enriched=enriched,
         # Even an unsafe caller override cannot merge unrelated workflows into one
         # prompt, because their allowed node ids must remain isolated.
-        config={"business-logic": {"batch_size": 99}},
+        config={
+            "business-logic": {"batch_size": 99},
+            "analyzers": {"enrichment": ["business-flow", "invariant"]},
+        },
     )
 
     ANALYZER.run(ctx)
 
     assert len(llm.prompts) == 3
     assert all(f"handler_{index}" in prompt for index, prompt in enumerate(llm.prompts))
+    for index, prompt in enumerate(llm.prompts):
+        assert f"ONLY COMPONENT {index}" in prompt
+        assert all(f"ONLY COMPONENT {other}" not in prompt for other in range(3) if other != index)
+        assert "ADMIN EXTERNAL MUST NOT LEAK" not in prompt
