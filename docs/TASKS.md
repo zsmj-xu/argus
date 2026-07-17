@@ -66,7 +66,7 @@
 | T14 | invariant 富化器(实验性) | codex | T12 | M4 | ✅ done |
 | T15 | 靶场资产导入 | codex | T05 | M5 | ✅ done |
 | T16 | 评测打分 | codex | T15 | M5 | ✅ done(C1/I3/C2 修复 + 独立复审通过) |
-| T17 | 图组/无图组对照 + 基线 | codex | T16 | M5 | pending |
+| T17 | 图组/无图组对照 + 基线 | codex | T16 | M5 | ✅ done(隔离/防泄露独立复审通过) |
 | T18 | 端到端对照实验 | claude | T13,T14,T17 | M5 | pending |
 
 > **T13 依赖已从 T12 改为 T12F**:business-flow 的回审缺陷(段内非法条目不丢弃、同名 node_id 锚错、缺跨 handler 调用边/状态字段)会直接绊到 T13。**codex 请等 T12F 合并后再开 T13。** T14(invariant)不依赖这些,可照旧。
