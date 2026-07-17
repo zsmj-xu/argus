@@ -77,3 +77,19 @@ Codex 在 rebase 后的结果:
 > 分级的 findings。
 
 （待 Claude 填写）
+
+## C1 + I3 + C2 修复(Codex)
+
+- handler fallback 不再删除分隔符后做裸子串匹配;
+- 优先从真实 codegraph 风格 `function:<hash>|<name>` / `method:<hash>|<name>`
+  的 `node_id` 提取 name,按完整 token 匹配。结构化 name 存在但不匹配时立即拒绝,
+  不会被 title/evidence 中顺带出现的 handler 文本覆盖;
+- 无结构化 name 时才回退到自由文本,且要求连续 token 序列精确匹配;
+- 通用 `business-logic` 匹配 invariant ground truth 时新增最小语义约束,避免仅凭
+  同文件近行把 replay finding 误配到 ownership 等其它 invariant;
+- 真实资产闭环测试已改用哈希 node_id 形态,并新增 handler 缺失、handler 子串/
+  文本覆盖、跨 invariant 近行误配三条负例;
+- 畸形 finding 的缺字段/location 现在作为 FP 跳过,不再让评分器抛 KeyError。
+
+最终独立复审:Spec ✅ / Quality Approved。聚焦测试 12 passed;全量 140 passed;
+mypy、ruff check、ruff format、diff check 全绿。真实四资产 18/18,FP=0、FN=0。

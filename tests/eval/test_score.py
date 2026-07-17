@@ -6,6 +6,7 @@ import json
 import re
 from copy import deepcopy
 from pathlib import Path
+from typing import cast
 
 from argus.contracts import Confidence, Finding, Severity
 from argus.eval.score import score
@@ -135,6 +136,132 @@ def test_requires_compatible_class_and_location() -> None:
     assert result["matched"] == []
 
 
+def test_handler_fallback_rejects_a_different_structured_handler() -> None:
+    ground_truth = {
+        "vulnerabilities": [
+            {
+                "id": "wallet-auth",
+                "in_scope": True,
+                "invariant_kind": "authentication",
+                "location": "api/users.py",
+                "handler": "get_wallet",
+                "source": "api/users.py get_wallet requires authentication",
+            }
+        ]
+    }
+    finding = _finding(
+        "wrong-handler",
+        "auth",
+        "api/users.py",
+        1,
+        node_id="function:0123456789abcdef|register",
+        title="Missing authentication on registration",
+    )
+
+    result = score([finding], ground_truth)
+
+    assert result == {"recall": 0.0, "precision": 0.0, "tp": 0, "fp": 1, "fn": 1, "matched": []}
+
+
+def test_handler_fallback_does_not_accept_substrings_or_free_text_override() -> None:
+    ground_truth = {
+        "vulnerabilities": [
+            {
+                "id": "register-boundary",
+                "in_scope": True,
+                "invariant_kind": "trust_boundary",
+                "location": "api/users.py",
+                "handler": "register",
+                "source": "api/users.py register trusts client-controlled fields",
+            }
+        ]
+    }
+    finding = _finding(
+        "substring-handler",
+        "business-logic",
+        "api/users.py",
+        1,
+        node_id="function:0123456789abcdef|registered_users",
+        title="Trust boundary issue for registered users",
+    )
+    finding["evidence"] = "The report mentions register, but the anchored handler is registered_users."
+
+    result = score([finding], ground_truth)
+
+    assert result == {"recall": 0.0, "precision": 0.0, "tp": 0, "fp": 1, "fn": 1, "matched": []}
+
+
+def test_handler_fallback_rejects_prefixed_symbol_names() -> None:
+    ground_truth = {
+        "vulnerabilities": [
+            {
+                "id": "wallet-auth",
+                "in_scope": True,
+                "invariant_kind": "authentication",
+                "location": "api/users.py",
+                "handler": "get_wallet",
+                "source": "api/users.py get_wallet requires authentication",
+            }
+        ]
+    }
+
+    for symbol in ("pre_get_wallet", "admin_get_wallet"):
+        finding = _finding(
+            f"wrong-{symbol}",
+            "auth",
+            "api/users.py",
+            1,
+            node_id=f"function:0123456789abcdef|{symbol}",
+            title="Missing authentication on wallet access",
+        )
+
+        result = score([finding], ground_truth)
+
+        assert result == {"recall": 0.0, "precision": 0.0, "tp": 0, "fp": 1, "fn": 1, "matched": []}
+
+
+def test_generic_business_logic_requires_matching_invariant_semantics() -> None:
+    ground_truth = {
+        "vulnerabilities": [
+            {
+                "id": "order-owner",
+                "in_scope": True,
+                "invariant_kind": "ownership",
+                "location": "api/orders.py:40",
+                "handler": "get_order",
+                "source": "api/orders.py:40 get_order lacks an ownership check",
+            }
+        ]
+    }
+    finding = _finding(
+        "nearby-replay",
+        "business-logic",
+        "api/orders.py",
+        42,
+        node_id="api/orders.py::refund_order",
+        title="Refund replay due to missing idempotency guard",
+    )
+    finding["data_flow"] = "duplicate refund request -> repeated credit"
+    finding["rationale"] = "The operation is replayable."
+    finding["evidence"] = "No idempotency key is checked."
+
+    result = score([finding], ground_truth)
+
+    assert result == {"recall": 0.0, "precision": 0.0, "tp": 0, "fp": 1, "fn": 1, "matched": []}
+
+
+def test_malformed_finding_is_counted_as_false_positive_instead_of_crashing() -> None:
+    ground_truth = {"vulns": [{"id": "v1", "vuln_class": "authz", "file": "api/a.py", "line": 10}]}
+    malformed = cast(
+        Finding,
+        {"id": "malformed", "vuln_class": "authz", "locations": [{"file": "api/a.py", "line": 10}]},
+    )
+
+    result = score([malformed], ground_truth)
+
+    assert result == {"recall": 0.0, "precision": 0.0, "tp": 0, "fp": 1, "fn": 1, "matched": []}
+
+
 def test_matching_is_one_to_one_and_maximizes_hits() -> None:
     ground_truth = {
         "vulns": [
@@ -209,8 +336,8 @@ def test_real_ground_truth_entries_are_matchable() -> None:
                     "business-logic",
                     location,
                     line,
-                    node_id=f"function:{location}:{handler}",
-                    title=f"Detected {handler}",
+                    node_id=f"function:0123456789abcdef|{handler}",
+                    title=f"Detected {vulnerability['invariant_kind']} violation in {handler}",
                 )
             )
 

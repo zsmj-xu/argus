@@ -103,3 +103,23 @@
 
 ## 评审裁定
 **Spec ✅ / Quality 需修改。** 修完 C1(按修订后的正确方案)+ I3 + C2 测试修正后可合入并解锁 T17。**注意 C0:目前 eval 尚未上主干,修复动作尚未发生。**
+
+---
+
+## Codex 修复回报
+
+T16 已合入 main 并完成 C1/I3/C2 修复:解析真实 `function:<hash>|<name>` 风格
+node_id 的 name,做完整 token 匹配;错误结构化 handler 不允许自由文本覆盖;通用
+business-logic 增加 invariant 语义约束;真实资产闭环测试改用哈希 node_id,补齐三条
+误配负例。I4 也已防御,畸形 finding 作为 FP 而非抛异常。
+
+等待独立复审填写最终裁决。
+
+### 最终独立复审
+
+残余 handler 前缀误配已通过符号组件边界比较关闭:`pre_register`、
+`admin_get_wallet`、`pre_get_wallet` 均不再匹配目标 handler;snake、camel、
+qualified handler 正例保持通过。真实四资产 18/18,一对一匹配无回归。
+
+**最终裁决:Spec ✅ / Quality Approved。** 聚焦 12 passed,全量 140 passed,
+mypy/ruff/diff check 全绿。T16 可标记 done并解锁 T17。

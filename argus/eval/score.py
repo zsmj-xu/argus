@@ -7,10 +7,35 @@ import re
 from dataclasses import dataclass
 from typing import Any, TypedDict
 
-from argus.contracts import Finding
+from argus.contracts import CodeLocation, Finding
 
 _LINE_TOLERANCE = 10
 _INVARIANT_KINDS = {"ownership", "authentication", "role", "replay", "trust_boundary"}
+_INVARIANT_ALIASES: dict[str, tuple[tuple[str, ...], ...]] = {
+    "ownership": (
+        ("ownership",),
+        ("owner",),
+        ("bola",),
+        ("idor",),
+        ("cross", "user"),
+        ("cross", "tenant"),
+    ),
+    "authentication": (
+        ("authentication",),
+        ("unauthenticated",),
+        ("missing", "auth"),
+        ("no", "auth"),
+    ),
+    "role": (("role",), ("admin",), ("privilege",), ("bfla",)),
+    "replay": (("replay",), ("replayed",), ("idempotency",), ("duplicate",), ("repeated",)),
+    "trust_boundary": (
+        ("trust", "boundary"),
+        ("client", "controlled"),
+        ("user", "supplied"),
+        ("mass", "assignment"),
+        ("tamper",),
+    ),
+}
 
 
 class MatchedFinding(TypedDict):
@@ -170,8 +195,14 @@ def _line_from_source(source: str, file: str) -> int | None:
 def _candidates(findings: list[Finding], expected: list[_GroundTruth]) -> list[_Candidate]:
     candidates: list[_Candidate] = []
     for finding_index, finding in enumerate(findings):
+        finding_id = finding.get("id")
+        finding_class = finding.get("vuln_class")
+        if not isinstance(finding_id, str) or not finding_id or not isinstance(finding_class, str):
+            continue
         for ground_truth_index, item in enumerate(expected):
-            if not _compatible_class(finding["vuln_class"], item):
+            if not _compatible_class(finding_class, item):
+                continue
+            if not _compatible_invariant_semantics(finding, item):
                 continue
             quality = _anchor_quality(finding, item)
             if quality is not None:
@@ -195,34 +226,111 @@ def _compatible_class(finding_class: str, ground_truth: _GroundTruth) -> bool:
 
 
 def _anchor_quality(finding: Finding, ground_truth: _GroundTruth) -> int | None:
-    handler_token = _token(ground_truth.handler) if ground_truth.handler else ""
-    finding_text = _token(
-        " ".join(
-            [
-                finding["title"],
-                finding["data_flow"],
-                finding["rationale"],
-                finding["evidence"],
-                *(location["node_id"] for location in finding["locations"]),
-            ]
-        )
-    )
-
+    raw_locations = finding.get("locations")
+    if not isinstance(raw_locations, list):
+        return None
     best: int | None = None
-    for location in finding["locations"]:
-        if not _same_file(location["file"], ground_truth.file):
+    same_file_locations: list[CodeLocation] = []
+    for location in raw_locations:
+        if not isinstance(location, dict):
             continue
+        file = location.get("file")
+        line = location.get("line")
+        node_id = location.get("node_id")
+        if (
+            isinstance(file, str)
+            and isinstance(line, int)
+            and not isinstance(line, bool)
+            and isinstance(node_id, str)
+            and _same_file(file, ground_truth.file)
+        ):
+            same_file_locations.append({"file": file, "line": line, "node_id": node_id})
+    if not same_file_locations:
+        return None
+
+    if ground_truth.line is None and ground_truth.handler:
+        return _handler_match_quality(finding, same_file_locations, ground_truth.handler)
+
+    for location in same_file_locations:
         if ground_truth.line is not None:
             distance = abs(location["line"] - ground_truth.line)
             if distance <= _LINE_TOLERANCE:
                 best = max(best or 0, 300 - distance)
             continue
-        if handler_token:
-            if handler_token in finding_text:
-                best = max(best or 0, 200)
-            continue
         best = max(best or 0, 100)
     return best
+
+
+def _compatible_invariant_semantics(finding: Finding, ground_truth: _GroundTruth) -> bool:
+    if not ground_truth.class_is_invariant:
+        return True
+    if _normalize_class(finding["vuln_class"]) != "business_logic":
+        return True
+
+    expected = _normalize_class(ground_truth.vuln_class)
+    aliases = _INVARIANT_ALIASES.get(expected, ())
+    finding_tokens = _tokens(_finding_text(finding))
+    return any(_contains_sequence(finding_tokens, alias) for alias in aliases)
+
+
+def _handler_match_quality(
+    finding: Finding,
+    same_file_locations: list[CodeLocation],
+    handler: str,
+) -> int | None:
+    expected = _tokens(handler)
+    if not expected:
+        return None
+
+    structured_symbols = [
+        symbol for location in same_file_locations if (symbol := _node_symbol(location["node_id"])) is not None
+    ]
+    if structured_symbols:
+        return 250 if any(_symbol_matches_handler(symbol, handler) for symbol in structured_symbols) else None
+
+    finding_tokens = _tokens(_finding_text(finding))
+    return 200 if _contains_sequence(finding_tokens, expected) else None
+
+
+def _node_symbol(node_id: str) -> str | None:
+    symbol: str | None = None
+    if "|" in node_id:
+        symbol = node_id.rsplit("|", 1)[-1]
+    elif "::" in node_id:
+        symbol = node_id.rsplit("::", 1)[-1]
+    elif node_id.startswith(("function:", "method:")):
+        symbol = node_id.rsplit(":", 1)[-1]
+    if symbol is None or not re.search(r"[A-Za-z]", symbol):
+        return None
+    return symbol
+
+
+def _symbol_matches_handler(symbol: str, handler: str) -> bool:
+    symbol_parts = _symbol_parts(symbol)
+    handler_parts = _symbol_parts(handler)
+    return (
+        bool(handler_parts)
+        and len(symbol_parts) >= len(handler_parts)
+        and symbol_parts[-len(handler_parts) :] == handler_parts
+    )
+
+
+def _symbol_parts(value: str) -> tuple[tuple[str, ...], ...]:
+    return tuple(tokens for part in re.split(r"[.:]+", value) if (tokens := _tokens(part)))
+
+
+def _finding_text(finding: Finding) -> str:
+    parts: list[str] = []
+    for key in ("title", "data_flow", "rationale", "evidence"):
+        value = finding.get(key)
+        if isinstance(value, str):
+            parts.append(value)
+    return " ".join(parts)
+
+
+def _contains_sequence(tokens: tuple[str, ...], expected: tuple[str, ...]) -> bool:
+    width = len(expected)
+    return width > 0 and any(tokens[index : index + width] == expected for index in range(len(tokens) - width + 1))
 
 
 def _maximum_matching(finding_count: int, candidates: list[_Candidate]) -> dict[int, int]:
@@ -280,5 +388,6 @@ def _same_file(left: str, right: str) -> bool:
     )
 
 
-def _token(value: str | None) -> str:
-    return re.sub(r"[^a-z0-9]+", "", (value or "").lower())
+def _tokens(value: str | None) -> tuple[str, ...]:
+    separated = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", value or "")
+    return tuple(re.findall(r"[a-z0-9]+", separated.lower()))
