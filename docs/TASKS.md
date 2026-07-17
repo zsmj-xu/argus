@@ -65,7 +65,7 @@
 | T13 | business-logic 漏洞分析器 | codex | **T12F** | M4 | ✅ done |
 | T14 | invariant 富化器(实验性) | codex | T12 | M4 | ✅ done |
 | T15 | 靶场资产导入 | codex | T05 | M5 | ✅ done |
-| T16 | 评测打分 | codex | T15 | M5 | in_progress |
+| T16 | 评测打分 | codex | T15 | M5 | review⏳(Claude 评审:Spec✅/需修改;退回修 C1 handler 子串误配 + I3 负例测试) |
 | T17 | 图组/无图组对照 + 基线 | codex | T16 | M5 | pending |
 | T18 | 端到端对照实验 | claude | T13,T14,T17 | M5 | pending |
 
