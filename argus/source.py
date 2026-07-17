@@ -39,26 +39,34 @@ def strip_source(path: str, text: str) -> str:
 def _strip_python(text: str) -> str:
     spans: list[tuple[int, int, int, int]] = []
     tokens: list[tokenize.TokenInfo] = []
-    try:
-        tokens = list(tokenize.generate_tokens(io.StringIO(text).readline))
-        for token in tokens:
-            if token.type == tokenize.COMMENT:
-                spans.append((token.start[0], token.start[1], token.end[0], token.end[1]))
-    except (IndentationError, tokenize.TokenError):
-        pass
+    token_failed = False
+    stream = tokenize.generate_tokens(io.StringIO(text).readline)
+    while True:
+        try:
+            token = next(stream)
+        except StopIteration:
+            break
+        except (IndentationError, tokenize.TokenError):
+            token_failed = True
+            break
+        tokens.append(token)
+        if token.type == tokenize.COMMENT:
+            spans.append((token.start[0], token.start[1], token.end[0], token.end[1]))
 
     try:
         tree = ast.parse(text)
     except (SyntaxError, ValueError):
         tree = None
-    if tree is not None:
-        docstring_bounds = [_character_bounds(text, node) for node in _docstring_nodes(tree)]
-        spans.extend(
-            (token.start[0], token.start[1], token.end[0], token.end[1])
-            for token in tokens
-            if token.type == tokenize.STRING
-            and any(start <= token.start and token.end <= end for start, end in docstring_bounds)
-        )
+    if token_failed or tree is None:
+        return "".join(char if char in {"\n", "\r"} else " " for char in text)
+
+    docstring_bounds = [_character_bounds(text, node) for node in _docstring_nodes(tree)]
+    spans.extend(
+        (token.start[0], token.start[1], token.end[0], token.end[1])
+        for token in tokens
+        if token.type == tokenize.STRING
+        and any(start <= token.start and token.end <= end for start, end in docstring_bounds)
+    )
     return _blank_spans(text, spans)
 
 

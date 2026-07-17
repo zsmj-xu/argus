@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from argus.contracts import SourceMode
 from argus.orchestration.pipeline import _FileSourceAccess
 from argus.source import strip_source
@@ -48,13 +50,13 @@ def test_python_stripping_covers_class_and_async_docstrings_but_keeps_plain_stri
 def test_python_stripping_handles_parenthesized_and_concatenated_docstrings_only_in_real_doc_positions() -> None:
     source = (
         "def parenthesized():\n"
-        "    (\"PAREN SECRET\")\n"
+        '    ("PAREN SECRET")\n'
         "    return 1\n"
         "def concatenated():\n"
-        "    (\"FIRST SECRET \" \"SECOND SECRET\")\n"
+        '    ("FIRST SECRET " "SECOND SECRET")\n'
         "    return 2\n"
         "if True:\n"
-        "    \"ORDINARY BLOCK STRING MUST REMAIN\"\n"
+        '    "ORDINARY BLOCK STRING MUST REMAIN"\n'
     )
 
     stripped = strip_source("service.py", source)
@@ -63,6 +65,22 @@ def test_python_stripping_handles_parenthesized_and_concatenated_docstrings_only
     assert "FIRST SECRET" not in stripped
     assert "SECOND SECRET" not in stripped
     assert "ORDINARY BLOCK STRING MUST REMAIN" in stripped
+    assert stripped.count("\n") == source.count("\n")
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "# TEACHING_SECRET\nx = (\n",
+        "# TEACHING_SECRET\n  x = 1\n y = 2\n",
+        '# TEACHING_SECRET\nx = """oops\n',
+        "if True:\n  x = 1\n y = 2\n# TEACHING_SECRET\n",
+    ],
+)
+def test_malformed_python_is_blank_fail_closed_without_shifting_lines(source: str) -> None:
+    stripped = strip_source("broken.py", source)
+
+    assert "TEACHING_SECRET" not in stripped
     assert stripped.count("\n") == source.count("\n")
 
 
