@@ -72,3 +72,14 @@
 - 若人把 findings.json 编辑成非 list(如写成对象),重载会成功但类型与 ArgusState
   契约不符,下游 report 可能异常。本任务只做 JSON 语法层容错,不做 schema 校验 ——
   更严格的产物 schema 校验可留作后续任务。
+
+## 最终复审与跨进程冒烟
+
+第三轮已补齐 Finding 字符串字段类型、CodeLocation 形状、正整数行号和枚举恢复校验;
+任一错误继续整份拒绝并保留内存 state。Codex 独立复审未发现实现级 blocking、
+critical 或 important finding。
+
+合并前另以不同 CLI 进程实跑 `start → 编辑 enriched → continue → 编辑 findings →
+continue → report`:漏洞分析器明确读取人工 enrichment 标记,最终报告明确使用人工 finding
+标题,SQLite state 无待执行节点且枚举类型正确。聚焦测试 17 passed,全量 120 passed,
+mypy/ruff check/ruff format 全绿。

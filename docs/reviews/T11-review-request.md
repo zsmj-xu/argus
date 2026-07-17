@@ -180,3 +180,17 @@ Important(字段类型/location 仍可绕过)已修复。**承认第二轮我只
 
 整文件替换语义保持正确:仅当整份产物通过最小契约校验时原子覆盖。建议 rebase
 最新 main 后合并,T11 至此可完成 M3 收口。
+
+### 合并前跨进程 CLI 冒烟复核(Codex)
+
+在独立工作树中使用真实 CLI 进程完成完整人工介入链路:
+
+1. `start` 在 `review-enrichment` 暂停;
+2. 人工编辑 `enriched-graph.json`,加入 `added_by_human=/human-edited`;
+3. 新进程执行 `continue`,漏洞分析器读取到该标记并生成包含 `/human-edited` 的 finding;
+4. 流程在 `review-findings` 再次暂停,人工修改 `findings.json` 的标题;
+5. 再次由新进程 `continue`,最终 `report.md` 使用人工修改后的标题。
+
+最终 SQLite checkpoint 中 `next == ()`,人工 enrichment/finding 修改均保留,
+`severity`/`confidence` 均恢复为冻结枚举。聚焦测试 17 passed;全量 120 passed;
+mypy、ruff check、ruff format 全部通过。**最终裁决:Spec ✅ / Quality Approved。**
