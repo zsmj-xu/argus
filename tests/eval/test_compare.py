@@ -113,7 +113,16 @@ def _context(
         "config": {
             "baseline": {
                 "files": ["api/orders.py"],
-                "node_ids": {"api/orders.py": "file:api/orders.py"},
+                "anchors": {
+                    "api/orders.py": [
+                        {
+                            "node_id": "function:0123456789abcdef|refund",
+                            "kind": "function",
+                            "start_line": 2,
+                            "end_line": 5,
+                        }
+                    ]
+                },
             }
         },
         "llm": llm,
@@ -180,9 +189,11 @@ def test_baseline_uses_only_stripped_source_and_trusted_node_mapping() -> None:
     assert "TEACHING_DOCSTRING_SECRET" not in llm.prompt
     assert "TEACHING_COMMENT_SECRET" not in llm.prompt
     assert "# string content remains" in llm.prompt
-    assert "file:api/orders.py" not in llm.prompt
+    assert "function:0123456789abcdef|refund" not in llm.prompt
     assert "invented" not in llm.prompt
-    assert result["findings"][0]["locations"] == [{"file": "api/orders.py", "line": 5, "node_id": "file:api/orders.py"}]
+    assert result["findings"][0]["locations"] == [
+        {"file": "api/orders.py", "line": 5, "node_id": "function:0123456789abcdef|refund"}
+    ]
     assert result["findings"][0]["analyzer"] == "baseline"
 
 

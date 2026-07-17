@@ -27,7 +27,7 @@ Baseline 保留模块级 `ANALYZER` 以满足项目注册约定,但不进入默�
 - LLM 只看到 `{path, stripped source}`,看不到 graph、enriched、workspace、完整 config
   或 node id 映射;
 - LLM 只返回 file+line 候选;输出 Finding 的 node_id 由 runner 提供的可信
-  `config.baseline.node_ids[path]` 覆盖,模型伪造值不生效。
+  `config.baseline.anchors[path]` 按行选择真实 callable node,模型伪造值不生效。
 
 普通 pipeline 若被误配置选择 baseline,会因为拿到真实 CodegraphHandle/非空 enriched
 而在任何源码读取或 LLM 调用前 fail-closed,不会静默偷看图。

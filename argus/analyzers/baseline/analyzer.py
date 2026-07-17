@@ -50,7 +50,7 @@ class BaselineAnalyzer(AnalyzerBase):
     requires: list[str] = []
 
     def run(self, ctx: AnalysisContext) -> AnalyzerResult:
-        files, node_ids = self._validate_isolation(ctx)
+        files, anchors = self._validate_isolation(ctx)
 
         sources: list[dict[str, str]] = []
         line_counts: dict[str, int] = {}
@@ -61,11 +61,11 @@ class BaselineAnalyzer(AnalyzerBase):
 
         prompt = json.dumps({"files": sources}, ensure_ascii=False, indent=2)
         response = ctx["llm"].complete(system=self._load_prompt(), prompt=prompt)
-        findings = self._parse_findings(response, files, node_ids, line_counts)
+        findings = self._parse_findings(response, files, anchors, line_counts)
         return {"analyzer": self.name, "findings": findings, "enrichment": {}}
 
     @staticmethod
-    def _validate_isolation(ctx: AnalysisContext) -> tuple[list[str], dict[str, str]]:
+    def _validate_isolation(ctx: AnalysisContext) -> tuple[list[str], dict[str, list[dict[str, Any]]]]:
         if type(ctx["graph"]) is not NoGraphHandle:
             raise BaselineIsolationError("baseline requires NoGraphHandle")
         if ctx["enriched"] != {}:
@@ -77,30 +77,33 @@ class BaselineAnalyzer(AnalyzerBase):
         if not isinstance(baseline, dict):
             raise BaselineIsolationError("baseline config is required")
         raw_files = baseline.get("files")
-        raw_node_ids = baseline.get("node_ids")
+        raw_anchors = baseline.get("anchors")
         if not isinstance(raw_files, list) or not raw_files:
             raise BaselineIsolationError("baseline.files must be a non-empty list")
-        if not isinstance(raw_node_ids, dict):
-            raise BaselineIsolationError("baseline.node_ids must be a mapping")
+        if not isinstance(raw_anchors, dict):
+            raise BaselineIsolationError("baseline.anchors must be a mapping")
 
         files: list[str] = []
-        node_ids: dict[str, str] = {}
+        anchors: dict[str, list[dict[str, Any]]] = {}
         for raw_path in raw_files:
             path = _safe_relative_path(raw_path)
             if path in files:
                 continue
-            node_id = raw_node_ids.get(path)
-            if not isinstance(node_id, str) or not node_id.strip():
-                raise BaselineIsolationError(f"baseline node id missing for {path!r}")
+            raw_file_anchors = raw_anchors.get(path)
+            if not isinstance(raw_file_anchors, list):
+                raise BaselineIsolationError(f"baseline anchors missing for {path!r}")
+            file_anchors = [anchor for item in raw_file_anchors if (anchor := _valid_anchor(item)) is not None]
+            if not file_anchors:
+                raise BaselineIsolationError(f"baseline has no valid anchors for {path!r}")
             files.append(path)
-            node_ids[path] = node_id
-        return files, node_ids
+            anchors[path] = file_anchors
+        return files, anchors
 
     def _parse_findings(
         self,
         response: str,
         files: list[str],
-        node_ids: dict[str, str],
+        anchors: dict[str, list[dict[str, Any]]],
         line_counts: dict[str, int],
     ) -> list[Finding]:
         payload = _json_payload(response)
@@ -127,6 +130,11 @@ class BaselineAnalyzer(AnalyzerBase):
                 continue
             if file not in allowed or not _valid_line(raw_line, line_counts[file]):
                 continue
+            if not isinstance(raw_line, int):
+                continue
+            node_id = _anchor_for_line(anchors[file], raw_line)
+            if node_id is None:
+                continue
 
             title = _required_text(raw.get("title"))
             rationale = _required_text(raw.get("rationale"))
@@ -141,7 +149,6 @@ class BaselineAnalyzer(AnalyzerBase):
                 or remediation is None
                 or severity is None
                 or confidence is None
-                or not isinstance(raw_line, int)
             ):
                 continue
             data_flow = raw.get("data_flow")
@@ -154,7 +161,7 @@ class BaselineAnalyzer(AnalyzerBase):
                     title=title,
                     severity=severity,
                     confidence=confidence,
-                    locations=[{"file": file, "line": raw_line, "node_id": node_ids[file]}],
+                    locations=[{"file": file, "line": raw_line, "node_id": node_id}],
                     data_flow=data_flow,
                     rationale=rationale,
                     evidence=evidence,
@@ -210,6 +217,42 @@ def _confidence(value: Any) -> Confidence | None:
 
 def _valid_line(value: Any, line_count: int) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and 1 <= value <= line_count
+
+
+def _valid_anchor(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    node_id = value.get("node_id")
+    start = value.get("start_line")
+    end = value.get("end_line")
+    kind = value.get("kind")
+    if (
+        not isinstance(node_id, str)
+        or not node_id
+        or not isinstance(start, int)
+        or isinstance(start, bool)
+        or start <= 0
+        or not isinstance(end, int)
+        or isinstance(end, bool)
+        or end < start
+        or not isinstance(kind, str)
+    ):
+        return None
+    return {"node_id": node_id, "start_line": start, "end_line": end, "kind": kind.lower()}
+
+
+def _anchor_for_line(anchors: list[dict[str, Any]], line: int) -> str | None:
+    containing = [anchor for anchor in anchors if anchor["start_line"] <= line <= anchor["end_line"]]
+    if not containing:
+        return None
+    containing.sort(
+        key=lambda anchor: (
+            0 if anchor["kind"] in {"function", "method"} else 1,
+            anchor["end_line"] - anchor["start_line"],
+            anchor["node_id"],
+        )
+    )
+    return str(containing[0]["node_id"])
 
 
 ANALYZER = BaselineAnalyzer()
