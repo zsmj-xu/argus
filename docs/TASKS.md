@@ -67,9 +67,46 @@
 | T15 | 靶场资产导入 | codex | T05 | M5 | ✅ done |
 | T16 | 评测打分 | codex | T15 | M5 | ✅ done(C1/I3/C2 修复 + 独立复审通过) |
 | T17 | 图组/无图组对照 + 基线 | codex | T16 | M5 | ✅ done(Claude Code 正式交叉评审通过 Spec✅/Approved;I-1 已知护栏缺口见评审) |
-| T18 | 端到端对照实验 | claude | T13,T14,T17 | M5 | in_progress⏸(Chat Completions 接入待 Claude 复审;随后配置环境变量跑批) |
+| T18 | 端到端对照实验(**Argus 内部消融**) | claude | T13,T14,T17 | M5 | ⏸ 搁置(run_eval.py 内部消融已完成,方向调整为阶段 C 的 Argus vs Shannon 对照;此内部消融本轮不跑批,保留代码) |
 
 > **T13 依赖已从 T12 改为 T12F**:business-flow 的回审缺陷(段内非法条目不丢弃、同名 node_id 锚错、缺跨 handler 调用边/状态字段)会直接绊到 T13。**codex 请等 T12F 合并后再开 T13。** T14(invariant)不依赖这些,可照旧。
+
+---
+
+## 阶段 C —— Argus vs Shannon 漏洞检测能力对照(VAmPI 先跑通)
+
+**目标**:先在 VAmPI 上跑通「Shannon 结果 ⟷ Argus 结果」端到端对照,验证 Argus 复刻 Shannon **检测**能力的实际差异。先跑通、可扩展,不追求完整评测。
+**设计文档(开工必读)**:`docs/superpowers/specs/2026-07-20-argus-vs-shannon-comparison-design.md`
+
+**公平对照口径(关键)**:
+- 只比**漏洞发现层**(Shannon Phase 3 `vuln-*` vs Argus vuln 分析器)。Shannon 侧**关闭 Exploitation**(`exploit: "false"`)——因为 Argus 定义上就不做动态验证,带上会口径错位。
+- Argus 侧只启用**移植自 Shannon 的 5 类分析器**(injection/xss/auth/authz/ssrf),**不启用** business-logic/invariant 新功能。
+- 两边对**同一份 `ground_truth/vampi.json`** 用**同一个 `argus/eval/score.py`** 打分,唯一变量是"哪个工具检出的"。
+
+**范式差异(须写进结论,非隐藏)**:Shannon 黑盒动态+源码、有 Exploitation 验证层;Argus 纯白盒静态、只输出候选清单、无验证层。
+
+| Task | 标题 | 归属 | 依赖 | 状态 | 说明 |
+|---|---|---|---|---|---|
+| C1 | 部署 VAmPI 到 Docker | — | — | pending | 用 `targets/VAmPI` 自带 `docker-compose.yaml`/`Dockerfile` 起运行中目标,确认 URL(如 `http://localhost:5000`)可访问。地基,最先做 |
+| C2 | 写 Shannon 对照 config | — | — | pending | `exploit: "false"` + scope 到 5 类 vuln 的 yaml。参考 Shannon `apps/worker/configs/example-config.yaml`。可与 C1 并行 |
+| C3 | 跑 Shannon 摸清输出格式 | — | C1,C2 | pending | **关键前置(风险 R1)**:跑一次 Shannon(exploit=false)对 VAmPI,记录真实产物结构(`deliverables/`/`*_findings.md`/`*_exploitation_queue.json` 等)。摸格式那次即当正式跑 |
+| C4 | 配 Argus 5 类 arm | — | — | pending | 只启用 injection/xss/auth/authz/ssrf、不带新功能的 arm 配置。图富化可用 business-flow 做事实层,但不加新漏洞类。可与 C1/C2 并行 |
+| C5 | Argus 跑 VAmPI(5 类 arm) | — | C4 | pending | 先在现有 120s 超时下试(deepseek-v4-pro 推理模型曾 ReadTimeout);失败则**最小改动**调 `argus/llm/client.py` 超时。产出 `findings.json` |
+| C6 | Shannon 输出归一适配层 | — | C3 | pending | 把 Shannon findings 转成 `score()` 可吃的 `{vuln_class, file, line/handler}` 形态。本对照主要新代码 |
+| C7 | 对照打分 + 出表 | — | C5,C6 | pending | 复用 `argus/eval/score.py` 对同一 `vampi.json` 给两边打分,产出对照表(各自 recall/precision + 交集/独有漏洞) |
+| C8 | 对照文档落盘 | — | C7 | pending | `docs/comparisons/vampi-shannon-vs-argus.md`,含范式差异声明。跑通标准:两边对同一 GT 打分产出一张对照表 |
+
+**依赖图**:
+```
+C1(部署) ──┬─→ C3(跑Shannon摸格式) ─→ C6(归一适配) ─┐
+C2(S-config)┘                                        ├─→ C7(打分对照) ─→ C8(文档)
+C4(A-config) ─→ C5(Argus跑批) ───────────────────────┘
+```
+关键路径:C1→C3→C6→C7→C8。C4→C5(Argus 侧)可并行。
+
+**本轮非目标**:crAPI/flowmart 扩展、business-logic/invariant 对照、Shannon 验证层对照、性能/成本对照。
+
+**环境资源(已确认就位)**:VAmPI 自带 Docker;Shannon 支持 `exploit:"false"`;Argus 侧 `.env` 已配 LLM gateway 凭据(`ARGUS_LLM_*`);Shannon 侧需自己的 AI 凭据(见 Shannon `.env`)。
 
 ---
 
@@ -79,3 +116,5 @@
 - **Codex**:漏洞分析器(T06/T08/T13/T14)、评测体系(T15–T17)。侧重分析器实现与评测。
 
 依赖关系保证:Codex 的 T06 依赖 Claude 的 T05(地基);Codex 的 T13/T14 依赖 Claude 的 T12(富化器)。跨人依赖点已在依赖列标出,领取前确认前置 task 状态为 `done`。
+
+**阶段 C(C1–C8)归属未定**:任务卡归属列留 `—`,领取时按看板约定把归属和状态改掉并提交。C1/C2/C4 无依赖可立即领取并并行;C3 需 C1+C2;C5 需 C4;C6 需 C3;C7 需 C5+C6;C8 需 C7。
