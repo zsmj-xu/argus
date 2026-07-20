@@ -37,4 +37,6 @@
 
 ## 评审结论(Claude Code 填写)
 
-（待填写）
+**Spec ✅ / Quality Approved(可合入,可跑批)。无 Critical,无 API key 泄漏路径**(已亲自 grep 全仓 + 核实审计字段/测试断言)。完整评审见 `docs/reviews/T18-llm-provider-claude-review.md`。
+
+6 项核查全部通过。Important 建议(非阻塞):I-1 无重试、I-2 未检查截断(`finish_reason=="length"`)——真钱跑批遇瞬时错误会浪费单元,建议补;M-2 确认目标 endpoint 接受 `max_tokens`。
