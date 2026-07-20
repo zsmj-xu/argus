@@ -6,12 +6,22 @@ from datetime import datetime, timezone
 from typing import Any
 
 import httpx
+from dotenv import find_dotenv, load_dotenv
 
 from argus.llm.audit import append_audit
 
 ENV_BASE_URL = "ARGUS_LLM_BASE_URL"
 ENV_API_KEY = "ARGUS_LLM_API_KEY"
 ENV_MODEL = "ARGUS_LLM_MODEL"
+
+
+def load_llm_environment() -> str | None:
+    """Load the nearest .env and let it override inherited environment values."""
+    dotenv_path = find_dotenv(usecwd=True)
+    if not dotenv_path:
+        return None
+    load_dotenv(dotenv_path, override=True)
+    return dotenv_path
 
 
 def _chat_completions_url(base_url: str) -> str:

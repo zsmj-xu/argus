@@ -84,6 +84,22 @@ def test_execute_preflight_requires_all_chat_completion_settings(monkeypatch) ->
     assert "ARGUS_LLM_MODEL is not set" in errors
 
 
+def test_main_loads_dotenv_before_running(tmp_path, monkeypatch, capsys) -> None:
+    (tmp_path / ".env").write_text(
+        "ARGUS_LLM_BASE_URL=https://dotenv.example.test\nARGUS_LLM_API_KEY=dotenv-key\nARGUS_LLM_MODEL=dotenv-model\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ARGUS_LLM_BASE_URL", "https://environment.example.test")
+    monkeypatch.setenv("ARGUS_LLM_API_KEY", "environment-key")
+    monkeypatch.setenv("ARGUS_LLM_MODEL", "environment-model")
+
+    assert main(["--dry-run", "--run-id", "dotenv"]) == 0
+
+    capsys.readouterr()
+    assert run_eval.os.environ["ARGUS_LLM_MODEL"] == "dotenv-model"
+
+
 def test_workspace_metadata_prevents_stale_artifact_reuse(tmp_path: Path, monkeypatch) -> None:
     ground_truth = tmp_path / "gt.json"
     ground_truth.write_text('{"vulnerabilities": []}', encoding="utf-8")

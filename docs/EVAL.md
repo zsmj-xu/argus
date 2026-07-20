@@ -76,14 +76,18 @@ uv run pytest tests/eval/test_ground_truth_assets.py -q
 Prerequisites: Python 3.11 environment installed with `uv`, a working `codegraph`
 binary, outbound access to an OpenAI-compatible `/v1/chat/completions` endpoint, and:
 
-```bash
-export ARGUS_LLM_BASE_URL="https://llm.example.com"
-export ARGUS_LLM_API_KEY="..."
-export ARGUS_LLM_MODEL="model-name"
+Create `.env` in the Argus repository (see `.env.example`):
+
+```dotenv
+ARGUS_LLM_BASE_URL=https://llm.example.com
+ARGUS_LLM_API_KEY=...
+ARGUS_LLM_MODEL=model-name
 ```
 
 `ARGUS_LLM_BASE_URL` may be the server root, end in `/v1`, or be the complete
-`/v1/chat/completions` URL. Argus never writes `ARGUS_LLM_API_KEY` to audit or evaluation metadata.
+`/v1/chat/completions` URL. Argus searches the current directory and its parents for `.env`;
+values from that file override inherited environment variables. Argus never writes
+`ARGUS_LLM_API_KEY` to audit or evaluation metadata.
 
 Example graph-enriched flowmart scan:
 

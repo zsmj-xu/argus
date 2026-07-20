@@ -34,7 +34,7 @@ from argus.contracts import (
 )
 from argus.graph.build import build_graph
 from argus.graph.codegraph import CodegraphHandle
-from argus.llm.client import ENV_API_KEY, ENV_BASE_URL, ENV_MODEL, AuditedLLM
+from argus.llm.client import ENV_API_KEY, ENV_BASE_URL, ENV_MODEL, AuditedLLM, load_llm_environment
 from argus.orchestration.checkpoints import (
     REVIEW_ENRICHMENT,
     REVIEW_FINDINGS,
@@ -118,6 +118,7 @@ def _build_context(state: ArgusState, graph: GraphHandle) -> AnalysisContext:
     LLM 用环境变量里的 api_key 现建;M1 分析器不实际调 LLM,故无 key 也能构造
     (仅在真正 complete() 时才需要网络)。
     """
+    load_llm_environment()
     runs_root = _runs_root_from_state(state)
     llm: LLMClient = AuditedLLM(
         api_key=os.environ.get(ENV_API_KEY, ""),

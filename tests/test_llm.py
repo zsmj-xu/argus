@@ -1,8 +1,10 @@
 import json
+import os
 
 import pytest
 
 from argus.llm import AuditedLLM
+from argus.llm.client import load_llm_environment
 
 
 class _FakeResponse:
@@ -96,3 +98,25 @@ def test_base_url_variants(base_url, expected, tmp_path):
 
     assert llm.complete(system="system", prompt="prompt") == "ok"
     assert fake.calls[0][0] == expected
+
+
+def test_dotenv_overrides_environment_and_is_found_from_child_directory(tmp_path, monkeypatch):
+    child = tmp_path / "nested" / "work"
+    child.mkdir(parents=True)
+    (tmp_path / ".env").write_text(
+        "ARGUS_LLM_BASE_URL=https://dotenv.example.test/v1\n"
+        "ARGUS_LLM_API_KEY=dotenv-key\n"
+        "ARGUS_LLM_MODEL=dotenv-model\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(child)
+    monkeypatch.setenv("ARGUS_LLM_BASE_URL", "https://environment.example.test")
+    monkeypatch.setenv("ARGUS_LLM_API_KEY", "environment-key")
+    monkeypatch.setenv("ARGUS_LLM_MODEL", "environment-model")
+
+    loaded = load_llm_environment()
+
+    assert loaded == str(tmp_path / ".env")
+    assert os.environ["ARGUS_LLM_BASE_URL"] == "https://dotenv.example.test/v1"
+    assert os.environ["ARGUS_LLM_API_KEY"] == "dotenv-key"
+    assert os.environ["ARGUS_LLM_MODEL"] == "dotenv-model"

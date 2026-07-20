@@ -19,7 +19,7 @@ from argus.contracts import AnalysisContext, Finding, SourceMode
 from argus.eval.score import ScoreResult, score
 from argus.graph.build import build_graph
 from argus.graph.codegraph import CodegraphHandle
-from argus.llm.client import ENV_API_KEY, ENV_BASE_URL, ENV_MODEL, AuditedLLM
+from argus.llm.client import ENV_API_KEY, ENV_BASE_URL, ENV_MODEL, AuditedLLM, load_llm_environment
 from argus.orchestration.pipeline import _FileSourceAccess
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -355,6 +355,7 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    load_llm_environment()
     args = _parser().parse_args(argv)
     errors = _preflight(execute=not args.dry_run)
     if errors:

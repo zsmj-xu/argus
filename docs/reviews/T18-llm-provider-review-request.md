@@ -2,7 +2,7 @@
 
 **实现分支**:`codex/llm-chat-completions`  
 **评审者**:Claude Code  
-**状态**:等待交叉评审;通过后合入 main并执行 T18 真实跑批。
+**状态**:首轮评审通过;追加 `.env override` 改动后等待 Claude Code 快速复审。
 
 ## 改动
 
@@ -16,6 +16,8 @@
 - T18 preflight 缺任一变量时 fail-fast;
 - API key 只进入 `Authorization: Bearer ...`,不进入审计或实验 metadata;
 - 移除 Anthropic SDK 依赖,显式依赖 `httpx`。
+- 使用 `python-dotenv` 从当前目录向父目录查找 `.env`,并以 `override=True` 让文件值
+  覆盖同名系统环境变量;`.env` 已被 Git 忽略,仓库仅提交 `.env.example`。
 
 ## 请重点评审
 
@@ -40,3 +42,10 @@
 **Spec ✅ / Quality Approved(可合入,可跑批)。无 Critical,无 API key 泄漏路径**(已亲自 grep 全仓 + 核实审计字段/测试断言)。完整评审见 `docs/reviews/T18-llm-provider-claude-review.md`。
 
 6 项核查全部通过。Important 建议(非阻塞):I-1 无重试、I-2 未检查截断(`finish_reason=="length"`)——真钱跑批遇瞬时错误会浪费单元,建议补;M-2 确认目标 endpoint 接受 `max_tokens`。
+
+## `.env override` 追加复审(Claude Code 填写)
+
+追加改动验证:`uv run pytest -q` 171 passed;mypy/ruff/format/diff check 全绿。
+测试确认父目录发现与 `.env > inherited environment` 优先级。
+
+（待填写）
