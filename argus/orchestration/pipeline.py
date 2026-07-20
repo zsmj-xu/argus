@@ -34,7 +34,7 @@ from argus.contracts import (
 )
 from argus.graph.build import build_graph
 from argus.graph.codegraph import CodegraphHandle
-from argus.llm.client import AuditedLLM
+from argus.llm.client import ENV_API_KEY, ENV_BASE_URL, ENV_MODEL, AuditedLLM
 from argus.orchestration.checkpoints import (
     REVIEW_ENRICHMENT,
     REVIEW_FINDINGS,
@@ -120,7 +120,9 @@ def _build_context(state: ArgusState, graph: GraphHandle) -> AnalysisContext:
     """
     runs_root = _runs_root_from_state(state)
     llm: LLMClient = AuditedLLM(
-        api_key=os.environ.get("ANTHROPIC_API_KEY", ""),
+        api_key=os.environ.get(ENV_API_KEY, ""),
+        base_url=os.environ.get(ENV_BASE_URL, ""),
+        model=os.environ.get(ENV_MODEL, ""),
         workspace=state["workspace"],
         runs_root=runs_root,
     )

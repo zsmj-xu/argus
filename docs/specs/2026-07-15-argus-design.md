@@ -2,7 +2,7 @@
 
 **日期**: 2026-07-15
 **状态**: 已通过 brainstorming 评审,待实现规划
-**技术栈**: Python + LangGraph + codegraph CLI/MCP + Anthropic SDK
+**技术栈**: Python + LangGraph + codegraph CLI/MCP + OpenAI-compatible Chat Completions API
 
 ---
 

@@ -74,7 +74,16 @@ uv run pytest tests/eval/test_ground_truth_assets.py -q
 ## Reproducing scans
 
 Prerequisites: Python 3.11 environment installed with `uv`, a working `codegraph`
-binary, and `ANTHROPIC_API_KEY` for analyzers that call an LLM.
+binary, outbound access to an OpenAI-compatible `/v1/chat/completions` endpoint, and:
+
+```bash
+export ARGUS_LLM_BASE_URL="https://llm.example.com"
+export ARGUS_LLM_API_KEY="..."
+export ARGUS_LLM_MODEL="model-name"
+```
+
+`ARGUS_LLM_BASE_URL` may be the server root, end in `/v1`, or be the complete
+`/v1/chat/completions` URL. Argus never writes `ARGUS_LLM_API_KEY` to audit or evaluation metadata.
 
 Example graph-enriched flowmart scan:
 

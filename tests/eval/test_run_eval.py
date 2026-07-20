@@ -63,7 +63,7 @@ def test_render_does_not_turn_failed_units_into_zero_scores() -> None:
 
 
 def test_dry_run_needs_no_api_key_and_prints_all_workspaces(monkeypatch, capsys) -> None:
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("ARGUS_LLM_API_KEY", raising=False)
 
     assert main(["--dry-run", "--run-id", "test"]) == 0
 
@@ -71,6 +71,17 @@ def test_dry_run_needs_no_api_key_and_prints_all_workspaces(monkeypatch, capsys)
     assert output.count("eval-test-") == 12
     assert "eval-test-vampi-graph-invariant" in output
     assert "eval-test-flowmart-baseline" in output
+
+
+def test_execute_preflight_requires_all_chat_completion_settings(monkeypatch) -> None:
+    for variable in ("ARGUS_LLM_BASE_URL", "ARGUS_LLM_API_KEY", "ARGUS_LLM_MODEL"):
+        monkeypatch.delenv(variable, raising=False)
+
+    errors = run_eval._preflight(execute=True)
+
+    assert "ARGUS_LLM_BASE_URL is not set" in errors
+    assert "ARGUS_LLM_API_KEY is not set" in errors
+    assert "ARGUS_LLM_MODEL is not set" in errors
 
 
 def test_workspace_metadata_prevents_stale_artifact_reuse(tmp_path: Path, monkeypatch) -> None:
