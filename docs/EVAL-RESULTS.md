@@ -1,7 +1,8 @@
 # Argus evaluation results
 
-The T18 runner is implemented and dry-run verified. Real measurements are pending because this
-environment does not currently provide `ANTHROPIC_API_KEY` or approved outbound API access.
+The T18 runner is implemented and dry-run verified. Real measurements are pending until the
+OpenAI-compatible endpoint settings (`ARGUS_LLM_BASE_URL`, `ARGUS_LLM_API_KEY`,
+`ARGUS_LLM_MODEL`) are placed in `.env` and outbound API access is available.
 
 Run after configuring the external prerequisites:
 

@@ -2,8 +2,9 @@
 
 ## 当前裁决
 
-Runner **Spec ✅ / Quality Approved**,可以提交。T18 的最终数据交付仍等待外部
-`ANTHROPIC_API_KEY` 与出站 API 网络,因此任务保持 `in_progress`,不伪标 done。
+Runner **Spec ✅ / Quality Approved**,可以提交。T18 的最终数据交付仍等待
+OpenAI-compatible endpoint 的 `ARGUS_LLM_BASE_URL`、`ARGUS_LLM_API_KEY`、
+`ARGUS_LLM_MODEL` 与出站 API 网络,因此任务保持 `in_progress`,不伪标 done。
 
 ## 已实现
 

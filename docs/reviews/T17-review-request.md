@@ -61,4 +61,5 @@ Baseline 保留模块级 `ANALYZER` 以满足项目注册约定,但不进入默�
 
 Baseline 不通过普通 `argus start` 执行;T18 专用 runner 显式实例化 `BaselineAnalyzer`
 和隔离 context。图组还需设置非匹配 `avoid` sentinel 关闭 codegraph `explore()` 的原始
-源码旁路。真实 LLM 跑批另需 `ANTHROPIC_API_KEY` 与出站网络。
+源码旁路。真实 LLM 跑批另需 `ARGUS_LLM_BASE_URL`、`ARGUS_LLM_API_KEY`、
+`ARGUS_LLM_MODEL` 与出站网络。

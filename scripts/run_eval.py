@@ -19,7 +19,7 @@ from argus.contracts import AnalysisContext, Finding, SourceMode
 from argus.eval.score import ScoreResult, score
 from argus.graph.build import build_graph
 from argus.graph.codegraph import CodegraphHandle
-from argus.llm.client import AuditedLLM, DEFAULT_MODEL
+from argus.llm.client import ENV_API_KEY, ENV_BASE_URL, ENV_MODEL, AuditedLLM, load_llm_environment
 from argus.orchestration.pipeline import _FileSourceAccess
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -123,7 +123,8 @@ def _expected_meta(unit: ScanUnit, arm: Arm, run_id: str) -> dict[str, Any]:
         "arm": arm.key,
         "enrichment": list(arm.enrichment),
         "source_mode": SourceMode.STRIPPED.value,
-        "model": DEFAULT_MODEL,
+        "model": os.environ.get(ENV_MODEL, ""),
+        "base_url": os.environ.get(ENV_BASE_URL, ""),
         "avoid": AVOID_SENTINEL,
     }
 
@@ -171,8 +172,9 @@ def _preflight(*, execute: bool) -> list[str]:
         if any(AVOID_SENTINEL in str(path.relative_to(unit.scan_root)) for path in unit.scan_root.rglob("*")):
             errors.append(f"avoid sentinel collides with target path: {unit.scan_root}")
     if execute:
-        if not os.environ.get("ANTHROPIC_API_KEY"):
-            errors.append("ANTHROPIC_API_KEY is not set")
+        for variable in (ENV_BASE_URL, ENV_API_KEY, ENV_MODEL):
+            if not os.environ.get(variable):
+                errors.append(f"{variable} is not set")
         if shutil.which("codegraph") is None and not Path("/opt/homebrew/bin/codegraph").exists():
             errors.append("codegraph CLI is not installed")
     return errors
@@ -265,7 +267,9 @@ def _run_baseline(unit: ScanUnit, workspace: str) -> list[Finding]:
 
     files, anchors = _baseline_inputs(unit)
     llm = AuditedLLM(
-        api_key=os.environ["ANTHROPIC_API_KEY"],
+        api_key=os.environ[ENV_API_KEY],
+        base_url=os.environ[ENV_BASE_URL],
+        model=os.environ[ENV_MODEL],
         workspace=workspace,
         runs_root=str(RUNS_ROOT),
     )
@@ -351,6 +355,7 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    load_llm_environment()
     args = _parser().parse_args(argv)
     errors = _preflight(execute=not args.dry_run)
     if errors:
