@@ -1,0 +1,31 @@
+# Argus 5 类 arm config —— 只用移植自 Shannon 的 5 类漏洞分析器,不带新功能
+#
+# 用于阶段 C 「Argus vs Shannon 漏洞检测能力对照」。
+# 公平口径(见 docs/superpowers/specs/2026-07-20-argus-vs-shannon-comparison-design.md §3):
+#   - Argus 侧只启用 injection/xss/auth/authz/ssrf 5 类(移植自 Shannon)
+#   - 不启用 business-logic/invariant 等 Argus 新功能(本轮不参与对照)
+#   - 图富化用 business-flow(喂给漏洞分析器的事实层),但不加新漏洞类
+#
+# 跑批命令:
+#   uv run python -m argus.cli start \
+#     -r targets/VAmPI -w <workspace> -c docs/comparisons/configs/argus-vampi-5class.yaml --yolo
+#
+# analyzer name 来自 argus/analyzers/<name>/analyzer.py 的 ANALYZER.name 属性:
+#   vuln: injection / xss / auth / authz / ssrf
+#   enrichment: business-flow
+
+analyzers:
+  enrichment:
+    - business-flow
+  vuln:
+    - injection
+    - xss
+    - auth
+    - authz
+    - ssrf
+
+# --yolo 会设 checkpoints=false,这里显式写明便于离线检视
+checkpoints: false
+
+# 喂给 LLM 的源码模式:stripped(去注释),与 run_eval.py 内部消融保持一致
+source_mode: stripped

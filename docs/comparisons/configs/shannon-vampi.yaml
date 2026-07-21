@@ -1,0 +1,65 @@
+# Shannon 对照 config —— VAmPI 靶场,exploit=false 只到漏洞发现层
+#
+# 用于阶段 C 「Argus vs Shannon 漏洞检测能力对照」。
+# 公平口径(见 docs/superpowers/specs/2026-07-20-argus-vs-shannon-comparison-design.md §2):
+#   - 只比漏洞发现层(Shannon Phase 3 vuln-* vs Argus vuln 分析器)
+#   - Shannon 关闭 Exploitation(exploit: "false"),因 Argus 定义上不做动态验证
+#   - 两边对同一 ground_truth/vampi.json 用同一个 argus/eval/score.py 打分
+#
+# 目标: http://localhost:5002 (vampi-vulnerable 容器, vulnerable=1)
+# 源码: targets/VAmPI (Flask 单体 API)
+
+description: >
+  VAmPI (Vulnerable API) — Flask 单体 API 靶场,对照实验用,vulnerable=1 模式。
+  纯 API 认证(无 HTML 登录页):POST /users/v1/register 注册(JSON {username,password,email}),
+  POST /users/v1/login 拿 auth_token(JWT),后续请求带 Authorization: Bearer <auth_token>。
+  OpenAPI spec 在 /openapi.json(12 端点)。
+
+# 公平口径:只跑 5 类(与 Argus 移植的 5 类一致),关闭 exploitation
+vuln_classes: [injection, xss, auth, authz, ssrf]
+exploit: "false"
+
+authentication:
+  # VAmPI 是纯 API,无登录页面。login_type=api(Shannon 支持 form/sso/api/basic)。
+  # 注意:Shannon prompt 对 api 类型无专门章节,主要靠下方 login_flow 自然语言指令引导 agent。
+  login_type: api
+  login_url: "http://localhost:5002/users/v1/login"
+  credentials:
+    username: "argus_test"
+    password: "Test1234!"
+  # VAmPI 无登录页面,认证全走 API。先注册(若未存在),再 login 拿 auth_token,后续带 Bearer。
+  login_flow:
+    - "Ensure user exists: POST http://localhost:5002/users/v1/register with JSON body {\"username\":\"argus_test\",\"password\":\"Test1234!\",\"email\":\"argus@test.local\"}; a 'already exists' response is fine, proceed."
+    - "Authenticate: POST http://localhost:5002/users/v1/login with JSON body {\"username\":\"argus_test\",\"password\":\"Test1234!\"}; the JSON response contains field 'auth_token' (a JWT)."
+    - "For all subsequent authenticated requests, set header Authorization: Bearer <auth_token> using the value of the auth_token field."
+    - "Database is pre-populated via GET http://localhost:5002/createdb; other seeded users (name1/name2) exist for BOLA testing."
+  success_condition:
+    type: text_contains
+    value: "auth_token"
+
+rules:
+  focus:
+    - description: "用户端点(auth/BOLA/mass-assign 目标)"
+      type: url_path
+      value: "/users/v1"
+    - description: "书籍端点(BOLA 目标,GT vampi-bola-books-get)"
+      type: url_path
+      value: "/books/v1"
+    - description: "_debug 端点(无认证,GT vampi-auth-debug)"
+      type: url_path
+      value: "/users/v1/_debug"
+  avoid:
+    - description: "不要修改 argus_test 之外用户的密码(避免破坏对照靶场状态)"
+      type: url_path
+      value: "/users/v1/*/password"
+
+rules_of_engagement: |
+  VAmPI 是本地对照靶场(vulnerable=1),测试不影响真实系统。
+  - 认证:register → login → Bearer auth_token,详见 login_flow。
+  - 数据:可用占位符;本靶场数据均为测试数据。
+  - exploit=false:只到漏洞发现层,不执行实际利用验证(与 Argus 静态检测公平对照)。
+  - 已知:OpenAPI spec 在 /openapi.json;源码在 targets/VAmPI(api_views/ 是路由层)。
+
+# 推理模型慢,降低并发避免 rate limit(可选,按需启用):
+# pipeline:
+#   max_concurrent_pipelines: 2
