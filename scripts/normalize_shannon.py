@@ -48,8 +48,11 @@ _DEFAULT_SEVERITY: dict[str, Severity] = {
     "ssrf": Severity.HIGH,
 }
 
-# 匹配 "file:line" 或 "file:start-end"(取 start)。Shannon 实际产物用范围,如 "api_views/books.py:50-60"。
-_FILE_LINE_RE = re.compile(r"^(.+?):(\d+)(?:-\d+)?\s*$")
+# 匹配 "file:line" 或 "file:start-end"(取 start)。Shannon 实际产物形如
+# "api_views/books.py:50-60" 或 "config.py:13 (SECRET_KEY='random'), models/...",
+# 即行首一个路径后跟 :line,后面可能有括号注释或多段。路径字符排除空格/括号/逗号,
+# 非贪婪匹配行首第一个 "路径:数字" 片段。
+_FILE_LINE_RE = re.compile(r"^([^\s(),]+):(\d+)(?:-\d+)?")
 
 
 def normalize_shannon_findings(deliverables_dir: str | Path) -> list[Finding]:

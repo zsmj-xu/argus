@@ -3,11 +3,11 @@
   "shannon": {
     "findings_count": 20,
     "score": {
-      "recall": 0.5,
-      "precision": 0.1,
-      "tp": 2,
-      "fp": 18,
-      "fn": 2,
+      "recall": 0.75,
+      "precision": 0.15,
+      "tp": 3,
+      "fp": 17,
+      "fn": 1,
       "matched": [
         {
           "ground_truth_id": "vampi-bola-books-get",
@@ -18,6 +18,11 @@
           "ground_truth_id": "vampi-bola-update-password",
           "finding_index": 14,
           "finding_id": "shannon:authz:AUTHZ-VULN-02"
+        },
+        {
+          "ground_truth_id": "vampi-auth-debug",
+          "finding_index": 6,
+          "finding_id": "shannon:auth:AUTH-VULN-06"
         }
       ]
     },
@@ -67,10 +72,32 @@
           "evidence": "exploitable=True | role=Any authenticated user (role: user) | side_effect=Any authenticated user resets any other user's password to an arbitrary value, enabling full account takeover | witness=Login as argus_test, then PUT /users/v1/name1/password with body {\"password\": \"hacked\"} — name1's password is changed without ownership validation | notes=Confirmed live in recon. The secure branch (vuln=0, users.py:194) correctly uses resp['sub'] as the target. This is BFLA — a function-level authorization failure combined with IDOR.",
           "remediation": ""
         }
+      },
+      {
+        "gt_id": "vampi-auth-debug",
+        "finding_id": "shannon:auth:AUTH-VULN-06",
+        "finding": {
+          "id": "shannon:auth:AUTH-VULN-06",
+          "analyzer": "shannon-auth",
+          "vuln_class": "auth",
+          "title": "Authentication_Bypass",
+          "severity": "high",
+          "confidence": "high",
+          "locations": [
+            {
+              "file": "api_views/users.py",
+              "line": 24,
+              "node_id": "api_views/users.py:24"
+            }
+          ],
+          "data_flow": "endpoint=GET /users/v1/_debug",
+          "rationale": "Authentication requirement (Bearer token check) on the debug endpoint. Endpoint should be removed entirely from production code or gated by the vuln flag at minimum. Currently not gated by any auth check and not controlled by the vulnerable environment variable.",
+          "evidence": "exploitable=True | notes=Live-confirmed: unauthenticated GET /users/v1/_debug returns HTTP 200 with full credential dump including admin:pass1 with admin=true. This endpoint is unconditionally present in both vulnerable=0 and vulnerable=1 modes — it is NOT gated by the vuln flag. This is the most direct complete authentication bypass: no cracking, no exploitation, just a single GET request.",
+          "remediation": ""
+        }
       }
     ],
     "false_negatives": [
-      "vampi-auth-debug",
       "vampi-massassign-admin"
     ],
     "false_positives": [
@@ -103,11 +130,6 @@
         "id": "shannon:auth:AUTH-VULN-05",
         "vuln_class": "auth",
         "title": "Login_Flow_Logic"
-      },
-      {
-        "id": "shannon:auth:AUTH-VULN-06",
-        "vuln_class": "auth",
-        "title": "Authentication_Bypass"
       },
       {
         "id": "shannon:auth:AUTH-VULN-07",
@@ -297,7 +319,9 @@
       "vampi-bola-books-get",
       "vampi-bola-update-password"
     ],
-    "only_shannon": [],
+    "only_shannon": [
+      "vampi-auth-debug"
+    ],
     "only_argus": []
   }
 }
