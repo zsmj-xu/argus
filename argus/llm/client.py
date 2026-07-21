@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
 from typing import Any
 
@@ -13,6 +14,10 @@ from argus.llm.audit import append_audit
 ENV_BASE_URL = "ARGUS_LLM_BASE_URL"
 ENV_API_KEY = "ARGUS_LLM_API_KEY"
 ENV_MODEL = "ARGUS_LLM_MODEL"
+# 推理模型(如 deepseek-v4-pro)首 token 延迟高,120s 曾 ReadTimeout。
+# 默认 600s;可用 ARGUS_LLM_TIMEOUT 覆盖(秒)。
+ENV_TIMEOUT = "ARGUS_LLM_TIMEOUT"
+DEFAULT_TIMEOUT_SECONDS = 600.0
 
 
 def load_llm_environment() -> str | None:
@@ -22,6 +27,20 @@ def load_llm_environment() -> str | None:
         return None
     load_dotenv(dotenv_path, override=True)
     return dotenv_path
+
+
+def _resolve_timeout() -> float:
+    """Resolve the HTTP timeout from ``ARGUS_LLM_TIMEOUT`` (seconds), falling back to default."""
+    raw = os.environ.get(ENV_TIMEOUT)
+    if not raw:
+        return DEFAULT_TIMEOUT_SECONDS
+    try:
+        value = float(raw)
+    except ValueError:
+        raise ValueError(f"{ENV_TIMEOUT} must be a number of seconds, got {raw!r}")
+    if value <= 0:
+        raise ValueError(f"{ENV_TIMEOUT} must be positive, got {value}")
+    return value
 
 
 def _chat_completions_url(base_url: str) -> str:
@@ -73,9 +92,10 @@ class AuditedLLM:
 
     @staticmethod
     def _build_client(api_key: str) -> httpx.Client:
+        timeout = _resolve_timeout()
         return httpx.Client(
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            timeout=httpx.Timeout(120.0),
+            timeout=httpx.Timeout(timeout),
         )
 
     def complete(self, *, system: str, prompt: str, max_tokens: int = 8192) -> str:
