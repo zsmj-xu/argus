@@ -111,6 +111,19 @@ def test_entry_without_file_line_produces_empty_locations(tmp_path: Path) -> Non
     assert findings[0]["locations"] == []
 
 
+def test_line_range_format_uses_start_line(tmp_path: Path) -> None:
+    """Shannon 实际产物用行范围(如 'api_views/books.py:50-60'),取 start line。"""
+    _write_queue(
+        tmp_path,
+        "authz_exploitation_queue.json",
+        [{"ID": "AZ-01", "vulnerability_type": "IDOR", "vulnerable_code_location": "api_views/books.py:50-60"}],
+    )
+
+    findings = normalize_shannon_findings(tmp_path)
+
+    assert findings[0]["locations"] == [{"file": "api_views/books.py", "line": 50, "node_id": "api_views/books.py:50"}]
+
+
 def test_all_five_classes_loaded(tmp_path: Path) -> None:
     for filename, cls in [
         ("injection_exploitation_queue.json", "injection"),

@@ -48,7 +48,8 @@ _DEFAULT_SEVERITY: dict[str, Severity] = {
     "ssrf": Severity.HIGH,
 }
 
-_FILE_LINE_RE = re.compile(r"^(.+?):(\d+)\s*$")
+# 匹配 "file:line" 或 "file:start-end"(取 start)。Shannon 实际产物用范围,如 "api_views/books.py:50-60"。
+_FILE_LINE_RE = re.compile(r"^(.+?):(\d+)(?:-\d+)?\s*$")
 
 
 def normalize_shannon_findings(deliverables_dir: str | Path) -> list[Finding]:
