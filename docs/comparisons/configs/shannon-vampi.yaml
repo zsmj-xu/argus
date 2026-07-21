@@ -12,7 +12,7 @@
 description: >
   VAmPI (Vulnerable API) — Flask 单体 API 靶场,对照实验用,vulnerable=1 模式。
   纯 API 认证(无 HTML 登录页):POST /users/v1/register 注册(JSON {username,password,email}),
-  POST /users/v1/login 拿 auth_token(JWT),后续请求带 Authorization: Bearer <auth_token>。
+  POST /users/v1/login 拿 auth_token(JWT),后续请求带 Authorization: Bearer 加 auth_token 值。
   OpenAPI spec 在 /openapi.json(12 端点)。
 
 # 公平口径:只跑 5 类(与 Argus 移植的 5 类一致),关闭 exploitation
@@ -23,16 +23,16 @@ authentication:
   # VAmPI 是纯 API,无登录页面。login_type=api(Shannon 支持 form/sso/api/basic)。
   # 注意:Shannon prompt 对 api 类型无专门章节,主要靠下方 login_flow 自然语言指令引导 agent。
   login_type: api
-  login_url: "http://localhost:5002/users/v1/login"
+  login_url: "http://host.docker.internal:5002/users/v1/login"
   credentials:
     username: "argus_test"
     password: "Test1234!"
   # VAmPI 无登录页面,认证全走 API。先注册(若未存在),再 login 拿 auth_token,后续带 Bearer。
   login_flow:
-    - "Ensure user exists: POST http://localhost:5002/users/v1/register with JSON body {\"username\":\"argus_test\",\"password\":\"Test1234!\",\"email\":\"argus@test.local\"}; a 'already exists' response is fine, proceed."
-    - "Authenticate: POST http://localhost:5002/users/v1/login with JSON body {\"username\":\"argus_test\",\"password\":\"Test1234!\"}; the JSON response contains field 'auth_token' (a JWT)."
-    - "For all subsequent authenticated requests, set header Authorization: Bearer <auth_token> using the value of the auth_token field."
-    - "Database is pre-populated via GET http://localhost:5002/createdb; other seeded users (name1/name2) exist for BOLA testing."
+    - "Ensure user exists: POST http://host.docker.internal:5002/users/v1/register with JSON body {\"username\":\"argus_test\",\"password\":\"Test1234!\",\"email\":\"argus@test.local\"}; a 'already exists' response is fine, proceed."
+    - "Authenticate: POST http://host.docker.internal:5002/users/v1/login with JSON body {\"username\":\"argus_test\",\"password\":\"Test1234!\"}; the JSON response contains field 'auth_token' (a JWT)."
+    - "For all subsequent authenticated requests, set header Authorization: Bearer followed by the value of the auth_token field from the login response."
+    - "Database is pre-populated via GET http://host.docker.internal:5002/createdb; other seeded users (name1/name2) exist for BOLA testing."
   success_condition:
     type: text_contains
     value: "auth_token"
