@@ -2,7 +2,7 @@
 
 **日期**:2026-07-20
 **靶场**:VAmPI(Flask 单体 API,`vulnerable=1` 模式)
-**状态**:进行中(Argus 侧已完成,Shannon 侧跑批中)
+**状态**:完成(Shannon + Argus 双侧跑通,对照表 + 结论已出)
 
 > 设计文档见 `docs/superpowers/specs/2026-07-20-argus-vs-shannon-comparison-design.md`。
 > 本轮目标:先在 VAmPI 上跑通「Shannon ⟷ Argus」端到端对照链路,验证 Argus 复刻 Shannon 检测能力的实际差异。先跑通、可扩展,不追求完整评测。
@@ -128,32 +128,93 @@
 
 ## 7. Shannon 侧结果(待 C3 跑批完成)
 
-> **占位**:C3 跑批完成后填入。Shannon 产物在 `targets/VAmPI/.shannon/deliverables/`,经 `normalize_shannon.py` 归一后打分。
+Shannon 跑批完成,产物在 `../shannon/workspaces/vampi-shannon/deliverables/`,经 `normalize_shannon.py` 归一后打分。
 
-### 7.1 Shannon 检出的 finding
+### 7.1 Shannon 检出的 finding(20 条,归一后)
 
-<!-- TODO(C3): 填入 Shannon *_exploitation_queue.json 归一后的 finding 清单 -->
+| vuln_class | 条数 | 代表性 finding |
+|---|---:|---|
+| injection | 1 | INJ-VULN-01: SQLi(无 code_location,定位不到行) |
+| xss | 0 | (VAmPI 无 XSS sink) |
+| auth | 12 | AUTH-VULN-06(debug 无认证)、AUTH-VULN-08(mass-assign admin)、密码明文存储、JWT secret 弱、无 rate limit 等 |
+| authz | 7 | AUTHZ-VULN-01(BOLA books)、AUTHZ-VULN-02(BOLA update_password)、AUTHZ-VULN-03(debug 无授权)、AUTHZ-VULN-04(mass-assign) |
+| ssrf | 0 | (VAmPI 无 SSRF 端点) |
+
+Shannon 的 auth 分析器拆得很细(12 条):Token 管理、传输安全、登录逻辑、密码存储、认证绕过等各自独立成条。Argus 同类问题合并更粗(auth 5 条)。
 
 ### 7.2 Shannon 打分
 
-<!-- TODO(C3): 填入 Shannon recall/precision/TP/FP/FN -->
+| findings 数 | TP | FP | FN | Recall | Precision |
+|---:|---:|---:|---:|---:|---:|
+| 20 | 2 | 18 | 2 | 0.500 | 0.100 |
 
-## 8. 对照表(待 Shannon 侧完成)
+**TP(命中 GT)**:
+- `vampi-bola-books-get` ← AUTHZ-VULN-01(IDOR books,authz)
+- `vampi-bola-update-password` ← AUTHZ-VULN-02(IDOR update_password,authz)
 
-<!-- TODO(C7): 填入 compare_shannon_argus.py 产出的对照表 -->
+**FN(未命中 GT)**:
+- `vampi-auth-debug` — Shannon AUTHZ-VULN-03/AUTH-VULN-06 检出了(debug 端点无认证),但归到 `authz`/`auth`,GT 是 `authentication`,score.py 只让 `auth` 兼容 `authentication`(§6)。AUTHZ-VULN-03 是 authz class 不匹配;AUTH-VULN-06 是 auth class 但 location 是多段(`api_views/users.py:24-26, models/user_model.py:58-59`),归一只取首段,行号 24 与 GT handler `debug` 走文本匹配但 vulnerability_type 是 `Authentication_Bypass` 不含 handler 名。
+- `vampi-massassign-admin` — Shannon AUTHZ-VULN-04/AUTH-VULN-08 检出了(admin flag 提权),但 GT 是 `trust_boundary`,score.py 只让 `business_logic` 兼容(§6)。
+
+### 7.3 人工核对(绕过 score.py 口径)
+
+Shannon 对 4 条 in_scope GT 的实际检出(按 file+line 匹配):
+
+| GT id | 检出? | finding |
+|---|---|---|
+| vampi-bola-books-get | ✅ | AUTHZ-VULN-01 authz @ api_views/books.py:50 |
+| vampi-bola-update-password | ✅ | AUTHZ-VULN-02 authz @ api_views/users.py:186 |
+| vampi-auth-debug | ✅ | AUTHZ-VULN-03 authz + AUTH-VULN-06 auth @ api_views/users.py:24 |
+| vampi-massassign-admin | ✅ | AUTHZ-VULN-04 authz + AUTH-VULN-08 auth @ api_views/users.py:60 |
+
+**人工核对 recall = 4/4 = 1.0**(与 Argus 一致,见 §5.3)。两边都检出了全部 4 条 in_scope 漏洞,score.py 算出的 0.500 是 §6 口径限制的对称压低。
+
+## 8. 对照表
 
 | 工具 | findings 数 | TP | FP | FN | Recall | Precision |
 |---|---:|---:|---:|---:|---:|---:|
-| Shannon | TBD | TBD | TBD | TBD | TBD | TBD |
+| Shannon | 20 | 2 | 18 | 2 | 0.500 | 0.100 |
 | Argus | 12 | 2 | 10 | 2 | 0.500 | 0.167 |
 
 ### GT 命中交集
 
-<!-- TODO(C7): 两边都命中 / 仅 Shannon / 仅 Argus -->
+- **两边都命中**: `vampi-bola-books-get`, `vampi-bola-update-password`
+- **仅 Shannon**: 无
+- **仅 Argus**: 无
 
-## 9. 结论(待对照表完成后补充)
+两边命中的 GT 完全一致(score.py 口径下)。人工核对下两边都检出全部 4 条 in_scope(§5.3 + §7.3)。
 
-<!-- TODO(C8): 基于 §8 对照表 + §2 范式差异 + §6 口径限制,给出 Argus 复刻 Shannon 检测能力的结论 -->
+## 9. 结论
+
+### 9.1 核心发现:Argus 复刻了 Shannon 的检测能力(本轮 VAmPI 范围)
+
+在 VAmPI 靶场上,针对 5 类漏洞(injection/xss/auth/authz/ssrf)的发现层:
+
+- **recall 对等**:score.py 口径下两边 recall 均为 0.500;人工核对下两边均 4/4 = 1.0(检出全部 in_scope GT)。Argus(纯白盒静态)与 Shannon(黑盒动态+源码,exploit=false)在漏洞**发现层**能力相当。
+- **precision 差异**:Argus precision(0.167)> Shannon(0.100)。Shannon 报 20 条候选(18 FP),Argus 报 12 条(10 FP)。Shannon 的 auth 分析器拆得更细(Token 管理/传输安全/登录逻辑/密码存储等独立成条),其中多数不在 GT 的 5 类不变量范围内,故算 FP。这不代表 Shannon 误报多——而是它报告粒度更细 + GT 范围更窄。
+
+### 9.2 范式差异的实际影响(§2 声明的验证)
+
+| 维度 | 预期 | 实际观察 |
+|---|---|---|
+| Shannon 黑盒能看运行时 | 可能发现静态看不到的 | Shannon 报了 Transport_Exposure(无 SSL)、Abuse_Defenses_Missing(无 rate limit)等运行时缺陷,Argus 静态未报——符合预期 |
+| Argus 静态能看全调用链 | 可能发现黑盒触达不了的 | 本轮 VAmPI 单体小应用,未观察到 Argus 独有的调用链发现——需更大靶场(crAPI)验证 |
+| Shannon 有 exploit 验证层 | 本轮关闭(公平口径) | 两边均无验证,只比发现层——口径对齐成功 |
+
+### 9.3 口径限制的对称性(§6 验证)
+
+score.py 的 invariant 兼容表对两边**对称影响**:Shannon 和 Argus 都检出了 debug(authentication)和 mass-assign(trust_boundary),但都因 class 不匹配(`authz` 不兼容 `authentication`;`auth`/`authz` 不兼容 `trust_boundary`)被算 FN。这证实 §6 的限制不是偏向某一方,而是评分器设计的系统性局限。**改 score.py 属契约变更(影响 T17 已评审的内部消融),本轮不改。**
+
+### 9.4 本轮结论
+
+**Argus 在 VAmPI 上复刻了 Shannon 的漏洞检测能力**(发现层,5 类)。端到端对照链路跑通:部署 → Shannon/Argus 跑批 → 归一 → 同一 score.py 打分 → 对照表 + 范式差异声明。本轮验证了设计文档的目标(先跑通、可扩展),为后续 crAPI/flowmart 扩展奠定基础。
+
+### 9.5 局限与后续
+
+- **单靶场**:仅 VAmPI,需 crAPI/flowmart 验证泛化性。
+- **GT 范围窄**:vampi.json 仅 4 条 in_scope(全 invariant 类),5 类分析器里 injection/xss/ssrf 无 in_scope GT 可对照。
+- **口径限制未解**:score.py invariant 兼容表把 recall 压到 0.500(实际 1.0),后续若需精确指标需扩兼容表(契约变更)。
+- **范式差异未充分体现**:VAmPI 太小,Argus 静态全调用链优势未展现。
 
 ## 10. 复现步骤
 

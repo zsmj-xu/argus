@@ -1,0 +1,303 @@
+{
+  "ground_truth_path": "ground_truth/vampi.json",
+  "shannon": {
+    "findings_count": 20,
+    "score": {
+      "recall": 0.5,
+      "precision": 0.1,
+      "tp": 2,
+      "fp": 18,
+      "fn": 2,
+      "matched": [
+        {
+          "ground_truth_id": "vampi-bola-books-get",
+          "finding_index": 13,
+          "finding_id": "shannon:authz:AUTHZ-VULN-01"
+        },
+        {
+          "ground_truth_id": "vampi-bola-update-password",
+          "finding_index": 14,
+          "finding_id": "shannon:authz:AUTHZ-VULN-02"
+        }
+      ]
+    },
+    "matched": [
+      {
+        "gt_id": "vampi-bola-books-get",
+        "finding_id": "shannon:authz:AUTHZ-VULN-01",
+        "finding": {
+          "id": "shannon:authz:AUTHZ-VULN-01",
+          "analyzer": "shannon-authz",
+          "vuln_class": "authz",
+          "title": "Horizontal",
+          "severity": "high",
+          "confidence": "high",
+          "locations": [
+            {
+              "file": "api_views/books.py",
+              "line": 50,
+              "node_id": "api_views/books.py:50"
+            }
+          ],
+          "data_flow": "endpoint=GET /books/v1/{book_title}",
+          "rationale": "In vuln=1 branch (books.py:50), the query is Book.query.filter_by(book_title=str(book_title)).first() with NO ownership filter. The JWT sub is validated (token_validator line 46) but never used to restrict which book is returned.",
+          "evidence": "exploitable=True | role=Any authenticated user (role: user) | side_effect=Any authenticated user reads the secret_content of any other user's book by supplying its title in the path parameter | witness=Register/login as argus_test, then GET /books/v1/bookTitle77 (owned by name1) — response returns secret_content without any ownership validation | notes=Confirmed live in recon. The book title acts as the sole access key; GET /books/v1 (public) reveals all titles and their owners, making enumeration trivial.",
+          "remediation": ""
+        }
+      },
+      {
+        "gt_id": "vampi-bola-update-password",
+        "finding_id": "shannon:authz:AUTHZ-VULN-02",
+        "finding": {
+          "id": "shannon:authz:AUTHZ-VULN-02",
+          "analyzer": "shannon-authz",
+          "vuln_class": "authz",
+          "title": "Horizontal",
+          "severity": "high",
+          "confidence": "high",
+          "locations": [
+            {
+              "file": "api_views/users.py",
+              "line": 186,
+              "node_id": "api_views/users.py:186"
+            }
+          ],
+          "data_flow": "endpoint=PUT /users/v1/{username}/password",
+          "rationale": "In vuln=1 branch (users.py:186), the target user is resolved via User.query.filter_by(username=username).first() where username is the PATH PARAM. JWT sub is validated (token_validator line 181) but the identity from resp['sub'] is never compared to the path param username — no ownership binding.",
+          "evidence": "exploitable=True | role=Any authenticated user (role: user) | side_effect=Any authenticated user resets any other user's password to an arbitrary value, enabling full account takeover | witness=Login as argus_test, then PUT /users/v1/name1/password with body {\"password\": \"hacked\"} — name1's password is changed without ownership validation | notes=Confirmed live in recon. The secure branch (vuln=0, users.py:194) correctly uses resp['sub'] as the target. This is BFLA — a function-level authorization failure combined with IDOR.",
+          "remediation": ""
+        }
+      }
+    ],
+    "false_negatives": [
+      "vampi-auth-debug",
+      "vampi-massassign-admin"
+    ],
+    "false_positives": [
+      {
+        "id": "shannon:injection:INJ-VULN-01",
+        "vuln_class": "injection",
+        "title": "SQLi"
+      },
+      {
+        "id": "shannon:auth:AUTH-VULN-01",
+        "vuln_class": "auth",
+        "title": "Token_Management_Issue"
+      },
+      {
+        "id": "shannon:auth:AUTH-VULN-02",
+        "vuln_class": "auth",
+        "title": "Transport_Exposure"
+      },
+      {
+        "id": "shannon:auth:AUTH-VULN-03",
+        "vuln_class": "auth",
+        "title": "Transport_Exposure"
+      },
+      {
+        "id": "shannon:auth:AUTH-VULN-04",
+        "vuln_class": "auth",
+        "title": "Abuse_Defenses_Missing"
+      },
+      {
+        "id": "shannon:auth:AUTH-VULN-05",
+        "vuln_class": "auth",
+        "title": "Login_Flow_Logic"
+      },
+      {
+        "id": "shannon:auth:AUTH-VULN-06",
+        "vuln_class": "auth",
+        "title": "Authentication_Bypass"
+      },
+      {
+        "id": "shannon:auth:AUTH-VULN-07",
+        "vuln_class": "auth",
+        "title": "Login_Flow_Logic"
+      },
+      {
+        "id": "shannon:auth:AUTH-VULN-08",
+        "vuln_class": "auth",
+        "title": "Login_Flow_Logic"
+      },
+      {
+        "id": "shannon:auth:AUTH-VULN-09",
+        "vuln_class": "auth",
+        "title": "Login_Flow_Logic"
+      },
+      {
+        "id": "shannon:auth:AUTH-VULN-10",
+        "vuln_class": "auth",
+        "title": "Token_Management_Issue"
+      },
+      {
+        "id": "shannon:auth:AUTH-VULN-11",
+        "vuln_class": "auth",
+        "title": "Login_Flow_Logic"
+      },
+      {
+        "id": "shannon:auth:AUTH-VULN-12",
+        "vuln_class": "auth",
+        "title": "Token_Management_Issue"
+      },
+      {
+        "id": "shannon:authz:AUTHZ-VULN-03",
+        "vuln_class": "authz",
+        "title": "Vertical"
+      },
+      {
+        "id": "shannon:authz:AUTHZ-VULN-04",
+        "vuln_class": "authz",
+        "title": "Vertical"
+      },
+      {
+        "id": "shannon:authz:AUTHZ-VULN-05",
+        "vuln_class": "authz",
+        "title": "Vertical"
+      },
+      {
+        "id": "shannon:authz:AUTHZ-VULN-06",
+        "vuln_class": "authz",
+        "title": "Context_Workflow"
+      },
+      {
+        "id": "shannon:authz:AUTHZ-VULN-07",
+        "vuln_class": "authz",
+        "title": "Horizontal"
+      }
+    ]
+  },
+  "argus": {
+    "findings_count": 12,
+    "score": {
+      "recall": 0.5,
+      "precision": 0.16666666666666666,
+      "tp": 2,
+      "fp": 10,
+      "fn": 2,
+      "matched": [
+        {
+          "ground_truth_id": "vampi-bola-books-get",
+          "finding_index": 5,
+          "finding_id": "authz:authz:6e55ca74c6ec"
+        },
+        {
+          "ground_truth_id": "vampi-bola-update-password",
+          "finding_index": 7,
+          "finding_id": "authz:authz:fb7cfdd86c0f"
+        }
+      ]
+    },
+    "matched": [
+      {
+        "gt_id": "vampi-bola-books-get",
+        "finding_id": "authz:authz:6e55ca74c6ec",
+        "finding": {
+          "id": "authz:authz:6e55ca74c6ec",
+          "analyzer": "authz",
+          "vuln_class": "authz",
+          "title": "IDOR: Any authenticated user can read any book's secret content (vulnerable mode)",
+          "severity": "high",
+          "confidence": "high",
+          "locations": [
+            {
+              "file": "api_views/books.py",
+              "line": 51,
+              "node_id": "function:4f134bc1b632d2229dce28f5480c5610"
+            }
+          ],
+          "data_flow": "HTTP GET /books/<book_title> -> get_by_title -> token_validator (auth only) -> if vuln: Book.query.filter_by(book_title=...) without user check -> response with secret_content",
+          "rationale": "The vulnerable code path only verifies the JWT token (authentication) but then fetches the book solely by title without enforcing that the requesting user owns it. This allows any authenticated user to access any book's secret content (horizontal privilege escalation / IDOR).",
+          "evidence": "In api_views/books.py, get_by_title function (line 50-55): 'if vuln: ... book = Book.query.filter_by(book_title=str(book_title)).first()' with no user filter, then returns 'secret': book.secret_content.",
+          "remediation": "Always filter books by the current user: Book.query.filter_by(user=user, book_title=...). Remove the vulnerable code path or ensure it is not active in production."
+        }
+      },
+      {
+        "gt_id": "vampi-bola-update-password",
+        "finding_id": "authz:authz:fb7cfdd86c0f",
+        "finding": {
+          "id": "authz:authz:fb7cfdd86c0f",
+          "analyzer": "authz",
+          "vuln_class": "authz",
+          "title": "IDOR: Authenticated user can change any user's password (vulnerable mode)",
+          "severity": "critical",
+          "confidence": "high",
+          "locations": [
+            {
+              "file": "api_views/users.py",
+              "line": 189,
+              "node_id": "function:53d1e2ef689dbec9bf75ad0266210aaf"
+            }
+          ],
+          "data_flow": "HTTP PUT /users/<username>/password -> update_password -> token_validator (auth only) -> if vuln: User.query.filter_by(username=username) without matching token's sub -> password updated for arbitrary user",
+          "rationale": "The vulnerable code path uses the URL parameter 'username' directly to locate the user, ignoring the identity from the JWT token ('sub'). This allows any authenticated user to reset the password of any other user (account takeover, horizontal privilege escalation).",
+          "evidence": "In api_views/users.py, update_password function (line 189-192): 'if vuln: ... user = User.query.filter_by(username=username).first() ... user.password = request_data.get('password')'",
+          "remediation": "Always look up the user by the token's 'sub' field: user = User.query.filter_by(username=resp['sub']).first(). Ensure the vulnerable path is not active in production."
+        }
+      }
+    ],
+    "false_negatives": [
+      "vampi-auth-debug",
+      "vampi-massassign-admin"
+    ],
+    "false_positives": [
+      {
+        "id": "injection:injection:b169eb9d5d09",
+        "vuln_class": "injection",
+        "title": "SQL Injection in User::get_user"
+      },
+      {
+        "id": "auth:auth:b162af1163c7",
+        "vuln_class": "auth",
+        "title": "Plaintext Password Storage"
+      },
+      {
+        "id": "auth:auth:61d36655e398",
+        "vuln_class": "auth",
+        "title": "User Enumeration via Distinct Login Error Messages"
+      },
+      {
+        "id": "auth:auth:28181261e32c",
+        "vuln_class": "auth",
+        "title": "Self-Registration Privilege Escalation via Admin Flag"
+      },
+      {
+        "id": "auth:auth:097a195dcab5",
+        "vuln_class": "auth",
+        "title": "Arbitrary Password Change via IDOR in update_password"
+      },
+      {
+        "id": "authz:authz:e6331c14cfec",
+        "vuln_class": "authz",
+        "title": "BFLA: Unauthenticated user can register with admin privileges (vulnerable mode)"
+      },
+      {
+        "id": "authz:authz:883c18368978",
+        "vuln_class": "authz",
+        "title": "Missing Authorization: Unauthenticated access to debug endpoint reveals password"
+      },
+      {
+        "id": "authz:authz:afe677571919",
+        "vuln_class": "authz",
+        "title": "Missing Authorization: Unauthenticated user enumeration via get_all_users"
+      },
+      {
+        "id": "authz:authz:e169117814ac",
+        "vuln_class": "authz",
+        "title": "Missing Authorization: Unauthenticated user email disclosure via get_by_username"
+      },
+      {
+        "id": "authz:authz:2e463db74f96",
+        "vuln_class": "authz",
+        "title": "Missing Authorization: Unauthenticated database reset via populate_db"
+      }
+    ]
+  },
+  "overlap": {
+    "both_hit": [
+      "vampi-bola-books-get",
+      "vampi-bola-update-password"
+    ],
+    "only_shannon": [],
+    "only_argus": []
+  }
+}

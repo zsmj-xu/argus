@@ -93,8 +93,8 @@
 | C4 | 配 Argus 5 类 arm | codex | — | ✅ done | 只启用 injection/xss/auth/authz/ssrf、不带新功能的 arm 配置。图富化可用 business-flow 做事实层,但不加新漏洞类。产出 `docs/comparisons/configs/argus-vampi-5class.yaml`;config 加载 + 5 类 analyzer + business-flow 发现均验证通过(missing NONE) |
 | C5 | Argus 跑 VAmPI(5 类 arm) | codex | C4 | ✅ done | 首跑 120s ReadTimeout(business-flow),最小改 `argus/llm/client.py` 超时可配(`ARGUS_LLM_TIMEOUT` 默认 600s,commit `94aa7cd`),resume 续跑全 6 节点完成。产出 `runs/vampi-5class/findings.json`(12 条)+ `report.md`。Argus 侧对 vampi.json 打分:recall=0.500 precision=0.167(TP=2 FP=10 FN=2);2 个 FN 是 score.py invariant 兼容口径(massassign→trust_boundary / debug→authentication 只认 business_logic/auth),非检测遗漏——C7 须声明 |
 | C6 | Shannon 输出归一适配层 | — | C3 | pending | 把 Shannon findings 转成 `score()` 可吃的 `{vuln_class, file, line/handler}` 形态。本对照主要新代码 |
-| C7 | 对照打分 + 出表 | — | C5,C6 | pending | 复用 `argus/eval/score.py` 对同一 `vampi.json` 给两边打分,产出对照表(各自 recall/precision + 交集/独有漏洞) |
-| C8 | 对照文档落盘 | — | C7 | pending | `docs/comparisons/vampi-shannon-vs-argus.md`,含范式差异声明。跑通标准:两边对同一 GT 打分产出一张对照表 |
+| C7 | 对照打分 + 出表 | codex | C5,C6 | ✅ done | 复用 `argus/eval/score.py` 对同一 `vampi.json` 给两边打分,产出对照表。Shannon recall=0.500/precision=0.100(TP=2 FP=18 FN=2),Argus recall=0.500/precision=0.167(TP=2 FP=10 FN=2)。两边命中 GT 完全一致(bola-books+bola-update-password);人工核对两边都 4/4 检出全部 in_scope |
+| C8 | 对照文档落盘 | codex | C7 | ✅ done | `docs/comparisons/vampi-shannon-vs-argus.md`,含范式差异声明 + 口径限制对称性分析 + 结论。跑通标准达成:两边对同一 GT 打分产出对照表 |
 
 **依赖图**:
 ```
