@@ -104,6 +104,19 @@
 
 **结论**:Argus 实际检出了全部 4 条 in_scope 漏洞,2 个 FN 是 score.py 的 invariant 兼容口径导致,非检测遗漏(见 §6)。
 
+### 5.3 人工核对(绕过 score.py 口径)
+
+人工按 file + handler 匹配,Argus 对 4 条 in_scope GT 的实际检出:
+
+| GT id | handler | 检出? | finding |
+|---|---|---|---|
+| vampi-bola-books-get | get_by_title | ✅ | finding[5] authz: IDOR books |
+| vampi-bola-update-password | update_password | ✅ | finding[4] auth / finding[7] authz |
+| vampi-auth-debug | debug | ✅ | finding[8] authz: debug endpoint 无授权 |
+| vampi-massassign-admin | register_user | ✅ | finding[3] auth / finding[6] authz |
+
+**人工核对 recall = 4/4 = 1.0**(vs score.py 算出的 0.500)。差距全部来自 §6 口径限制:score.py 的 invariant 兼容表让 `authz` 不匹配 `authentication`、`auth`/`authz` 不匹配 `trust_boundary`。这一差距在 §9 结论中需显式声明,避免误读为"Argus 检测能力只有 Shannon 一半"。
+
 ## 6. 口径限制(score.py invariant 兼容)
 
 `argus/eval/score.py` 的 `_compatible_class` 为内部消融(T17,含 business-logic)设计:
