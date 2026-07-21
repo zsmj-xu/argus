@@ -87,7 +87,7 @@
 
 | Task | 标题 | 归属 | 依赖 | 状态 | 说明 |
 |---|---|---|---|---|---|
-| C1 | 部署 VAmPI 到 Docker | — | — | pending | 用 `targets/VAmPI` 自带 `docker-compose.yaml`/`Dockerfile` 起运行中目标,确认 URL(如 `http://localhost:5000`)可访问。地基,最先做 |
+| C1 | 部署 VAmPI 到 Docker | codex | — | ✅ done | 用 `targets/VAmPI` 自带 `docker-compose.yaml`/`Dockerfile` 起运行中目标。实际端口:`:5001`(vulnerable=0)/`:5002`(vulnerable=1,对照用此)。OpenAPI 12 端点齐全;`_debug` 无认证返回明文密码→vuln 模式确认;认证链路 register{username,password,email}→login→`auth_token`→Bearer 已通 |
 | C2 | 写 Shannon 对照 config | — | — | pending | `exploit: "false"` + scope 到 5 类 vuln 的 yaml。参考 Shannon `apps/worker/configs/example-config.yaml`。可与 C1 并行 |
 | C3 | 跑 Shannon 摸清输出格式 | — | C1,C2 | pending | **关键前置(风险 R1)**:跑一次 Shannon(exploit=false)对 VAmPI,记录真实产物结构(`deliverables/`/`*_findings.md`/`*_exploitation_queue.json` 等)。摸格式那次即当正式跑 |
 | C4 | 配 Argus 5 类 arm | — | — | pending | 只启用 injection/xss/auth/authz/ssrf、不带新功能的 arm 配置。图富化可用 business-flow 做事实层,但不加新漏洞类。可与 C1/C2 并行 |
