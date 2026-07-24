@@ -7,6 +7,8 @@
     {
       "id": "vampi-bola-books-get",
       "in_scope": true,
+      "comparison_in_scope": true,
+      "comparison_vuln_class": "authz",
       "invariant_kind": "ownership",
       "vuln_type": "BOLA",
       "location": "api_views/books.py",
@@ -18,6 +20,8 @@
     {
       "id": "vampi-bola-update-password",
       "in_scope": true,
+      "comparison_in_scope": true,
+      "comparison_vuln_class": "authz",
       "invariant_kind": "ownership",
       "vuln_type": "BOLA / Unauthorized password update",
       "location": "api_views/users.py",
@@ -29,6 +33,8 @@
     {
       "id": "vampi-auth-debug",
       "in_scope": true,
+      "comparison_in_scope": true,
+      "comparison_vuln_class": "auth",
       "invariant_kind": "authentication",
       "vuln_type": "Missing authentication / Excessive data exposure",
       "location": "api_views/users.py",
@@ -40,6 +46,8 @@
     {
       "id": "vampi-massassign-admin",
       "in_scope": true,
+      "comparison_in_scope": true,
+      "comparison_vuln_class": "authz",
       "invariant_kind": "trust_boundary",
       "vuln_type": "Mass assignment / Privilege escalation",
       "location": "api_views/users.py",
@@ -51,6 +59,9 @@
     {
       "id": "vampi-user-enum-login",
       "in_scope": false,
+      "comparison_in_scope": true,
+      "comparison_vuln_class": "auth",
+      "comparison_location": {"file": "api_views/users.py", "line": 85, "end_line": 106},
       "invariant_kind": "n/a",
       "vuln_type": "User / password enumeration",
       "location": "api_views/users.py",
@@ -62,6 +73,7 @@
     {
       "id": "vampi-redos-email",
       "in_scope": false,
+      "comparison_in_scope": false,
       "invariant_kind": "n/a",
       "vuln_type": "ReDoS",
       "location": "api_views/users.py",
@@ -73,6 +85,8 @@
     {
       "id": "vampi-sqli-getuser",
       "in_scope": false,
+      "comparison_in_scope": true,
+      "comparison_vuln_class": "injection",
       "invariant_kind": "n/a",
       "vuln_type": "SQL Injection",
       "location": "models/user_model.py",

@@ -45,14 +45,23 @@ class InvariantAnalyzer(AnalyzerBase):
         # Use token replacement instead of str.format: prompt.txt intentionally contains
         # a literal JSON example with braces that must not be interpreted as placeholders.
         prompt = prompt_template.replace("{skeleton}", skeleton).replace("{source}", source_context)
+        settings = ctx["config"].get(self.name, {})
+        max_tokens = settings.get("max_tokens", 8192) if isinstance(settings, dict) else 8192
+        if not isinstance(max_tokens, int) or isinstance(max_tokens, bool) or max_tokens <= 0:
+            max_tokens = 8192
+        strict_outputs = ctx["config"].get("strict_outputs") is True
 
         try:
-            raw = ctx["llm"].complete(system=_SYSTEM, prompt=prompt)
+            raw = ctx["llm"].complete(system=_SYSTEM, prompt=prompt, max_tokens=max_tokens)
         except Exception as exc:  # pragma: no cover - defensive around provider failures
+            if strict_outputs:
+                raise
             logger.warning("Invariant LLM call failed: %s", exc)
             raw = ""
 
         parsed = _parse_json_object(raw)
+        if strict_outputs and parsed is None:
+            raise RuntimeError("invariant analyzer returned invalid JSON")
         invariants = _normalize_invariants(parsed, handlers)
         return {
             "analyzer": self.name,

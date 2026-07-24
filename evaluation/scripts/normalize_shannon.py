@@ -8,7 +8,8 @@
 映射要点:
 - 文件名编码 vuln_class(injection/xss/auth/authz/ssrf)。
 - 每条 entry 的 ``vulnerable_code_location`` 形如 ``api_views/books.py:51`` →
-  拆成 file + line。Shannon 是黑盒、不锚 codegraph,故 node_id 用 ``file:line``
+  拆成 file + line。注入类优先使用 ``sink_call``，避免把路由 source 当成漏洞
+  位置。Shannon 是黑盒、不锚 codegraph,故 node_id 用 ``file:line``
   (score.py 的 ``_node_symbol`` 提不出符号时退回 handler 文本匹配)。
 - severity 不被 score.py 消费,按 confidence 近似填;confidence 直接取 entry 的。
 - injection/xss 还有 ``path``/``sink_call``/``source`` 等字段,拼进 evidence 便于人工审阅。
@@ -115,15 +116,25 @@ def _entry_to_finding(entry: dict[str, Any], vuln_class: str) -> Finding | None:
 
 
 def _parse_location(entry: dict[str, Any], vuln_class: str) -> tuple[str, int] | None:
-    """从 entry 提 (file, line)。优先 vulnerable_code_location,其次 source/path。"""
-    for key in ("vulnerable_code_location", "source", "path", "source_endpoint", "endpoint"):
+    """从 entry 提取 (file, line)，注入类优先锚定 sink。"""
+    keys: tuple[str, ...] = (
+        "sink_call",
+        "sink_function",
+        "vulnerable_code_location",
+        "source",
+        "path",
+        "source_endpoint",
+        "endpoint",
+    )
+    if vuln_class not in {"injection", "xss"}:
+        keys = ("vulnerable_code_location", "source", "path", "source_endpoint", "endpoint")
+    for key in keys:
         value = entry.get(key)
         if not isinstance(value, str) or not value.strip():
             continue
         match = _FILE_LINE_RE.match(value.strip())
         if match is not None:
             return match.group(1), int(match.group(2))
-    _ = vuln_class  # 目前不按 class 差异化;保留参数便于后续扩展
     return None
 
 

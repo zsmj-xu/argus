@@ -29,6 +29,10 @@ _CONFIDENCES: dict[str, Confidence] = {member.value: member for member in Confid
 _CONFIDENCES["med"] = Confidence.MEDIUM
 
 
+class AnalyzerOutputError(RuntimeError):
+    """Raised when an evaluation run requires a complete structured response."""
+
+
 class ShannonAnalyzerBase(AnalyzerBase):
     """Run a prompt-specialized static analyzer over graph and enriched-graph facts."""
 
@@ -47,6 +51,7 @@ class ShannonAnalyzerBase(AnalyzerBase):
         batch_size = self._positive_int(settings.get("batch_size"), _DEFAULT_BATCH_SIZE)
         batches = [candidates[offset : offset + batch_size] for offset in range(0, len(candidates), batch_size)]
         system = self._load_prompt()
+        strict_outputs = ctx["config"].get("strict_outputs") is True
         findings: list[Finding] = []
         seen_ids: set[str] = set()
 
@@ -59,13 +64,21 @@ class ShannonAnalyzerBase(AnalyzerBase):
             )
             payload = self._parse_response(response)
             if payload is None:
+                if strict_outputs:
+                    raise AnalyzerOutputError(f"{self.name} analyzer returned invalid JSON")
                 continue
             raw_findings = payload.get("findings")
             if not isinstance(raw_findings, list):
+                if strict_outputs:
+                    raise AnalyzerOutputError(f"{self.name} analyzer response has no findings list")
                 logger.warning("%s response JSON must contain a findings list", self.name)
                 continue
             for item_index, raw_finding in enumerate(raw_findings):
                 if not isinstance(raw_finding, dict):
+                    if strict_outputs:
+                        raise AnalyzerOutputError(
+                            f"{self.name} analyzer returned an invalid finding at index {item_index}"
+                        )
                     logger.warning("Discarding %s finding batch %d item %d", self.name, batch_index, item_index)
                     continue
                 finding = self._convert_finding(
@@ -74,7 +87,13 @@ class ShannonAnalyzerBase(AnalyzerBase):
                     item_index,
                     allowed_node_ids,
                 )
-                if finding is not None and finding["id"] not in seen_ids:
+                if finding is None:
+                    if strict_outputs:
+                        raise AnalyzerOutputError(
+                            f"{self.name} analyzer returned an invalid finding at index {item_index}"
+                        )
+                    continue
+                if finding["id"] not in seen_ids:
                     seen_ids.add(finding["id"])
                     findings.append(finding)
 

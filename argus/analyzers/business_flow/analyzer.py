@@ -72,6 +72,10 @@ _SYSTEM = (
 _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL | re.IGNORECASE)
 
 
+class BusinessFlowOutputError(RuntimeError):
+    """Raised when a comparison run requires usable structured enrichment."""
+
+
 class BusinessFlowAnalyzer(AnalyzerBase):
     """在 codegraph 骨架上重建业务流的富化器。phase=ENRICHMENT,不产 findings。"""
 
@@ -85,24 +89,43 @@ class BusinessFlowAnalyzer(AnalyzerBase):
         # 1. 拉骨架节点(函数/方法)并补出真实调用边。
         skeleton_nodes = _collect_skeleton_nodes(graph)
         call_edges = _collect_call_edges(graph, skeleton_nodes)
+        settings = ctx["config"].get(self.name, {})
+        max_tokens = settings.get("max_tokens", 8192) if isinstance(settings, dict) else 8192
+        if not isinstance(max_tokens, int) or isinstance(max_tokens, bool) or max_tokens <= 0:
+            max_tokens = 8192
+        batch_size = (
+            settings.get("batch_size", len(skeleton_nodes)) if isinstance(settings, dict) else len(skeleton_nodes)
+        )
+        if not isinstance(batch_size, int) or isinstance(batch_size, bool) or batch_size <= 0:
+            batch_size = len(skeleton_nodes) or 1
+        strict_outputs = ctx["config"].get("strict_outputs") is True
+        merged: dict[str, Any] = {section: [] for section in _ENRICHMENT_SECTIONS}
 
-        # 2. 读源码片段拼上下文。
-        context_text = _build_context(skeleton_nodes, ctx["source"])
+        # Split large repositories into bounded prompts. Each batch is normalized
+        # independently, then merged so a single response cannot consume the whole
+        # provider reasoning budget before producing structured JSON.
+        batches = [skeleton_nodes[offset : offset + batch_size] for offset in range(0, len(skeleton_nodes), batch_size)]
+        for batch_index, batch_nodes in enumerate(batches, start=1):
+            batch_ids = {str(node.get("id")) for node in batch_nodes if isinstance(node.get("id"), str)}
+            batch_edges = [edge for edge in call_edges if edge.get("from") in batch_ids and edge.get("to") in batch_ids]
+            context_text = _build_context(batch_nodes, ctx["source"])
+            prompt = self._load_prompt()
+            prompt = prompt.replace("{{SKELETON}}", _skeleton_json(batch_nodes, batch_edges))
+            prompt = prompt.replace("{{CONTEXT}}", context_text)
+            raw = ctx["llm"].complete(system=_SYSTEM, prompt=prompt, max_tokens=max_tokens)
 
-        # 3. 组 prompt 调 LLM。
-        prompt = self._load_prompt()
-        prompt = prompt.replace("{{SKELETON}}", _skeleton_json(skeleton_nodes, call_edges))
-        prompt = prompt.replace("{{CONTEXT}}", context_text)
-        raw = ctx["llm"].complete(system=_SYSTEM, prompt=prompt)
+            parsed = _parse_json_object(raw)
+            if strict_outputs and parsed is None:
+                raise BusinessFlowOutputError("business-flow analyzer returned invalid JSON")
+            if parsed is not None and len(batches) > 1:
+                _namespace_batch_ids(parsed, batch_index)
+            _merge_enrichment(merged, _assemble_enrichment(parsed, batch_nodes))
 
-        # 4. 健壮解析(失败得到 None)。
-        parsed = _parse_json_object(raw)
+        if strict_outputs and skeleton_nodes and not (merged["endpoints"] or merged["handlers"]):
+            raise BusinessFlowOutputError("business-flow analyzer returned no usable endpoints or handlers")
 
-        # 5. 规整 + 锚回真实 node_id。
-        enrichment = _assemble_enrichment(parsed, skeleton_nodes)
-
-        # 6. 富化器不产 finding。
-        return {"analyzer": self.name, "findings": [], "enrichment": enrichment}
+        # 富化器不产 finding。
+        return {"analyzer": self.name, "findings": [], "enrichment": merged}
 
 
 # === 骨架抽取 ===
@@ -227,6 +250,59 @@ def _build_context(nodes: list[dict[str, Any]], source: SourceAccess) -> str:
     if not blocks:
         return "(无可用源码上下文)"
     return "\n\n".join(blocks)
+
+
+def _merge_enrichment(target: dict[str, Any], source: dict[str, Any]) -> None:
+    """Merge normalized batch sections while preserving stable first-seen order."""
+    for section in _ENRICHMENT_SECTIONS:
+        existing = target[section]
+        seen = {
+            item.get("id") if isinstance(item, dict) and item.get("id") else json.dumps(item, sort_keys=True)
+            for item in existing
+        }
+        for item in source[section]:
+            key = item.get("id") if isinstance(item, dict) and item.get("id") else json.dumps(item, sort_keys=True)
+            if key not in seen:
+                existing.append(item)
+                seen.add(key)
+
+
+def _namespace_batch_ids(parsed: dict[str, Any], batch_index: int) -> None:
+    """Make LLM-local entity IDs unique and keep their internal references intact."""
+    mapping: dict[str, str] = {}
+    for section in ("endpoints", "handlers", "resources", "operations"):
+        items = parsed.get(section)
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            if not isinstance(item, dict) or not isinstance(item.get("id"), str) or not item["id"]:
+                continue
+            original = item["id"]
+            namespaced = f"batch-{batch_index}:{original}"
+            mapping[original] = namespaced
+            item["id"] = namespaced
+
+    edges = parsed.get("edges")
+    if isinstance(edges, list):
+        for edge in edges:
+            if not isinstance(edge, dict):
+                continue
+            for field in ("from", "to"):
+                value = edge.get(field)
+                if isinstance(value, str) and value in mapping:
+                    edge[field] = mapping[value]
+
+    flows = parsed.get("business_flows")
+    if isinstance(flows, list):
+        for flow in flows:
+            if not isinstance(flow, dict):
+                continue
+            endpoint_id = flow.get("endpoint_id")
+            if isinstance(endpoint_id, str) and endpoint_id in mapping:
+                flow["endpoint_id"] = mapping[endpoint_id]
+            related = flow.get("related_endpoint_ids")
+            if isinstance(related, list):
+                flow["related_endpoint_ids"] = [mapping.get(item, item) for item in related]
 
 
 # === LLM 返回解析 ===

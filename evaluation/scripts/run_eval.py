@@ -22,11 +22,15 @@ from argus.graph.codegraph import CodegraphHandle
 from argus.llm.client import ENV_API_KEY, ENV_BASE_URL, ENV_MODEL, AuditedLLM, load_llm_environment
 from argus.orchestration.pipeline import _FileSourceAccess
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
+EVALUATION_ROOT = Path(__file__).resolve().parents[1]
 RUNS_ROOT = ROOT / "runs"
 RESULTS_PATH = ROOT / "docs" / "EVAL-RESULTS.md"
 AVOID_SENTINEL = "__argus_eval_disable_raw_graph_explore__"
 SOURCE_EXTENSIONS = {".c", ".cc", ".cpp", ".go", ".h", ".hpp", ".java", ".js", ".jsx", ".py", ".pyw", ".ts", ".tsx"}
+EVAL_MAX_TOKENS = 32768
+BUSINESS_FLOW_BATCH_SIZE = 8
+BASELINE_BATCH_SIZE = 4
 
 
 @dataclass(frozen=True)
@@ -55,20 +59,30 @@ class EvaluationResult:
 
 
 SCAN_UNITS = (
-    ScanUnit("vampi", "VAmPI", ROOT / "targets" / "VAmPI", ROOT / "ground_truth" / "vampi.json"),
+    ScanUnit(
+        "vampi",
+        "VAmPI",
+        EVALUATION_ROOT / "targets" / "VAmPI",
+        EVALUATION_ROOT / "ground_truth" / "vampi.json",
+    ),
     ScanUnit(
         "crapi-workshop",
         "crAPI",
-        ROOT / "targets" / "crAPI" / "services" / "workshop",
-        ROOT / "ground_truth" / "crapi.json",
+        EVALUATION_ROOT / "targets" / "crAPI" / "services" / "workshop",
+        EVALUATION_ROOT / "ground_truth" / "crapi.json",
     ),
     ScanUnit(
         "crapi-community",
         "crAPI",
-        ROOT / "targets" / "crAPI" / "services" / "community",
-        ROOT / "ground_truth" / "crapi-community.json",
+        EVALUATION_ROOT / "targets" / "crAPI" / "services" / "community",
+        EVALUATION_ROOT / "ground_truth" / "crapi-community.json",
     ),
-    ScanUnit("flowmart", "flowmart", ROOT / "targets" / "flowmart", ROOT / "ground_truth" / "flowmart.json"),
+    ScanUnit(
+        "flowmart",
+        "flowmart",
+        EVALUATION_ROOT / "targets" / "flowmart",
+        EVALUATION_ROOT / "ground_truth" / "flowmart.json",
+    ),
 )
 
 ARMS = (
@@ -125,7 +139,12 @@ def _expected_meta(unit: ScanUnit, arm: Arm, run_id: str) -> dict[str, Any]:
         "source_mode": SourceMode.STRIPPED.value,
         "model": os.environ.get(ENV_MODEL, ""),
         "base_url": os.environ.get(ENV_BASE_URL, ""),
+        "disable_thinking": os.environ.get("ARGUS_LLM_DISABLE_THINKING", "").strip().lower()
+        in {"1", "true", "yes", "on"},
         "avoid": AVOID_SENTINEL,
+        "max_tokens": EVAL_MAX_TOKENS,
+        "business_flow_batch_size": BUSINESS_FLOW_BATCH_SIZE,
+        "baseline_batch_size": BASELINE_BATCH_SIZE,
     }
 
 
@@ -198,6 +217,16 @@ def _graph_command(unit: ScanUnit, arm: Arm, workspace: str) -> list[str]:
         "--set",
         'analyzers.vuln=["business-logic"]',
         "--set",
+        f"business-flow.max_tokens={EVAL_MAX_TOKENS}",
+        "--set",
+        f"business-flow.batch_size={BUSINESS_FLOW_BATCH_SIZE}",
+        "--set",
+        f"invariant.max_tokens={EVAL_MAX_TOKENS}",
+        "--set",
+        f"business-logic.max_tokens={EVAL_MAX_TOKENS}",
+        "--set",
+        "strict_outputs=true",
+        "--set",
         f"avoid={AVOID_SENTINEL}",
     ]
 
@@ -216,10 +245,17 @@ def _run_graph(unit: ScanUnit, arm: Arm, workspace: str) -> list[Finding]:
 
     if findings_path.is_file() and report_path.is_file():
         return cast(list[Finding], _load_json(findings_path))
-    if state_path.is_file():
-        _run_command([sys.executable, "-m", "argus.cli", "resume", "-w", workspace])
-    else:
-        _run_command(_graph_command(unit, arm, workspace))
+    try:
+        if state_path.is_file():
+            _run_command([sys.executable, "-m", "argus.cli", "resume", "-w", workspace])
+        else:
+            _run_command(_graph_command(unit, arm, workspace))
+    except RuntimeError:
+        # A completed child can still return 120 while flushing its output. Only
+        # accept that status when both final artifacts exist; partial runs remain
+        # failures and can be resumed safely.
+        if not (findings_path.is_file() and report_path.is_file()):
+            raise
     if not findings_path.is_file():
         raise RuntimeError(f"graph arm produced no findings artifact: {findings_path}")
     return cast(list[Finding], _load_json(findings_path))
@@ -277,7 +313,15 @@ def _run_baseline(unit: ScanUnit, workspace: str) -> list[Finding]:
         "graph": NoGraphHandle(),
         "enriched": {},
         "source": _FileSourceAccess(str(unit.scan_root), SourceMode.STRIPPED),
-        "config": {"baseline": {"files": files, "anchors": anchors}},
+        "config": {
+            "baseline": {
+                "files": files,
+                "anchors": anchors,
+                "max_tokens": EVAL_MAX_TOKENS,
+                "batch_size": BASELINE_BATCH_SIZE,
+            },
+            "strict_outputs": True,
+        },
         "llm": llm,
         "workspace": workspace,
     }
@@ -305,7 +349,7 @@ def render_results(results: list[EvaluationResult]) -> str:
     lines = [
         "# Argus evaluation results",
         "",
-        "Results are generated by `uv run python scripts/run_eval.py`. Failed units are never scored as zero.",
+        "Results are generated by `uv run python evaluation/scripts/run_eval.py`. Failed units are never scored as zero.",
         "",
         "| Target | Scan unit | Arm | TP | FP | FN | Recall | Precision | Workspace | Status |",
         "|---|---|---|---:|---:|---:|---:|---:|---|---|",

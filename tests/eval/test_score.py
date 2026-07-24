@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import cast
 
 from argus.contracts import Confidence, Finding, Severity
-from argus.eval.score import score
+from argus.eval.score import score, score_detection
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -136,6 +136,60 @@ def test_requires_compatible_class_and_location() -> None:
     assert result["matched"] == []
 
 
+def test_detection_score_ignores_taxonomy_but_requires_source_anchor() -> None:
+    ground_truth = {"vulns": [{"id": "debug", "vuln_class": "auth", "file": "api/users.py", "line": 10}]}
+    findings = [
+        _finding("same-vulnerability-different-class", "authz", "api/users.py", 11),
+        _finding("wrong-location", "auth", "api/other.py", 10),
+    ]
+
+    result = score_detection(findings, ground_truth)
+
+    assert result == {
+        "recall": 1.0,
+        "tp": 1,
+        "fn": 0,
+        "matched": [
+            {
+                "ground_truth_id": "debug",
+                "finding_index": 0,
+                "finding_id": "same-vulnerability-different-class",
+            }
+        ],
+    }
+
+
+def test_detection_score_accepts_a_ground_truth_source_range() -> None:
+    ground_truth = {
+        "vulns": [
+            {
+                "id": "login-enumeration",
+                "vuln_class": "auth",
+                "location": {"file": "api/users.py", "line": 85, "end_line": 106},
+            }
+        ]
+    }
+    findings = [
+        _finding("handler-entry", "auth", "api/users.py", 85),
+        _finding("vulnerable-branch", "auth", "api/users.py", 101),
+    ]
+
+    result = score_detection(findings, ground_truth)
+
+    assert result["tp"] == 1
+    assert result["fn"] == 0
+    assert result["recall"] == 1.0
+
+
+def test_detection_score_does_not_cross_unrelated_vulnerability_families() -> None:
+    ground_truth = {"vulns": [{"id": "coupon-sqli", "vuln_class": "injection", "file": "api/coupon.py", "line": 40}]}
+    findings = [_finding("nearby-authz", "authz", "api/coupon.py", 40)]
+
+    result = score_detection(findings, ground_truth)
+
+    assert result == {"recall": 0.0, "tp": 0, "fn": 1, "matched": []}
+
+
 def test_handler_fallback_rejects_a_different_structured_handler() -> None:
     ground_truth = {
         "vulnerabilities": [
@@ -161,6 +215,35 @@ def test_handler_fallback_rejects_a_different_structured_handler() -> None:
     result = score([finding], ground_truth)
 
     assert result == {"recall": 0.0, "precision": 0.0, "tp": 0, "fp": 1, "fn": 1, "matched": []}
+
+
+def test_handler_fallback_treats_hash_only_codegraph_id_as_opaque() -> None:
+    ground_truth = {
+        "vulnerabilities": [
+            {
+                "id": "wallet-auth",
+                "in_scope": True,
+                "invariant_kind": "authentication",
+                "location": "api/users.py",
+                "handler": "get_wallet",
+                "source": "api/users.py get_wallet requires authentication",
+            }
+        ]
+    }
+    finding = _finding(
+        "hash-only-node-id",
+        "auth",
+        "api/users.py",
+        79,
+        node_id="function:35835a02b83d77772ccba3d4b39e61cc",
+        title="Missing authentication in get_wallet",
+    )
+
+    result = score(findings=[finding], ground_truth=ground_truth)
+
+    assert result["tp"] == 1
+    assert result["fn"] == 0
+    assert result["recall"] == 1.0
 
 
 def test_handler_fallback_does_not_accept_substrings_or_free_text_override() -> None:
@@ -305,18 +388,18 @@ def test_empty_inputs_are_zero_and_inputs_are_not_mutated() -> None:
 
 def test_real_ground_truth_counts_only_in_scope_vulnerabilities() -> None:
     false_negatives = 0
-    for path in sorted((ROOT / "ground_truth").glob("*.json")):
+    for path in sorted((ROOT / "evaluation" / "ground_truth").glob("*.json")):
         with path.open(encoding="utf-8") as handle:
             result = score([], json.load(handle))
         false_negatives += result["fn"]
         assert result["tp"] == 0
         assert result["fp"] == 0
 
-    assert false_negatives == 18
+    assert false_negatives == 16
 
 
 def test_real_ground_truth_entries_are_matchable() -> None:
-    for path in sorted((ROOT / "ground_truth").glob("*.json")):
+    for path in sorted((ROOT / "evaluation" / "ground_truth").glob("*.json")):
         with path.open(encoding="utf-8") as handle:
             ground_truth = json.load(handle)
 

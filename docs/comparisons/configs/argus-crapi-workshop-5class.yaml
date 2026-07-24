@@ -1,0 +1,13 @@
+# Fair discovery arm for Argus vs Shannon on crAPI workshop service.
+analyzers:
+  enrichment: []
+  vuln:
+    - injection
+    - xss
+    - auth
+    - authz
+    - ssrf
+
+checkpoints: false
+source_mode: stripped
+strict_outputs: true

@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 
 from argus.eval.score import ScoreResult
-from scripts import run_eval
-from scripts.run_eval import (
+from evaluation.scripts import run_eval
+from evaluation.scripts.run_eval import (
     ARMS,
     SCAN_UNITS,
     Arm,
@@ -113,3 +113,13 @@ def test_workspace_metadata_prevents_stale_artifact_reuse(tmp_path: Path, monkey
 
     with pytest.raises(RuntimeError, match="metadata does not match"):
         _prepare_workspace_meta("workspace", {**expected, "revision": "different"})
+
+
+def test_expected_metadata_pins_evaluation_output_budget(tmp_path: Path) -> None:
+    (tmp_path / "gt.json").write_text("{}", encoding="utf-8")
+    unit = ScanUnit("unit", "Target", tmp_path, tmp_path / "gt.json")
+    metadata = run_eval._expected_meta(unit, Arm("baseline", (), baseline=True), "run")
+
+    assert metadata["max_tokens"] == run_eval.EVAL_MAX_TOKENS
+    assert metadata["business_flow_batch_size"] == run_eval.BUSINESS_FLOW_BATCH_SIZE
+    assert metadata["baseline_batch_size"] == run_eval.BASELINE_BATCH_SIZE

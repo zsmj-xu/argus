@@ -112,6 +112,8 @@ def test_authz_prompt_contains_codegraph_and_enriched_context() -> None:
     assert "resource id comes from the request" in llm.prompt
     assert "focus" in llm.prompt
     assert "BOLA" in llm.system
+    assert "mass-assignment" in llm.system
+    assert "server-authoritative" in llm.system
 
 
 def test_authz_discards_finding_with_unknown_node_id(caplog: pytest.LogCaptureFixture) -> None:

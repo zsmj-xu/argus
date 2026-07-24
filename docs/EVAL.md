@@ -8,10 +8,10 @@ Argus does not need to clone repositories during evaluation.
 
 | Ground truth | Scan root | Language / scope | In-scope entries |
 | --- | --- | --- | --- |
-| `ground_truth/vampi.json` | `targets/VAmPI` | Python / full target | ownership, authentication, trust boundary |
-| `ground_truth/crapi.json` | `targets/crAPI/services/workshop` | Python/Django workshop service | ownership, role, authentication, trust boundary |
-| `ground_truth/crapi-community.json` | `targets/crAPI/services/community` | Go community service | ownership, role, trust boundary |
-| `ground_truth/flowmart.json` | `targets/flowmart` | Python synthetic cross-handler benchmark | all five invariant kinds |
+| `evaluation/ground_truth/vampi.json` | `evaluation/targets/VAmPI` | Python / full target | ownership, authentication, trust boundary |
+| `evaluation/ground_truth/crapi.json` | `evaluation/targets/crAPI/services/workshop` | Python/Django workshop service | ownership, role, authentication, trust boundary |
+| `evaluation/ground_truth/crapi-community.json` | `evaluation/targets/crAPI/services/community` | Go community service | role (business scope); injection in comparison scope |
+| `evaluation/ground_truth/flowmart.json` | `evaluation/targets/flowmart` | Python synthetic cross-handler benchmark | all five invariant kinds |
 
 The five evaluation invariant kinds are `ownership`, `authentication`, `role`,
 `replay`, and `trust_boundary`. Ground-truth entries with `in_scope=false` document
@@ -93,7 +93,7 @@ Example graph-enriched flowmart scan:
 
 ```bash
 uv run argus start \
-  -r targets/flowmart \
+  -r evaluation/targets/flowmart \
   -w eval-flowmart-graph \
   --yolo \
   --set 'source_mode=stripped' \
@@ -105,7 +105,7 @@ Enable the experimental invariant enricher for its comparison arm:
 
 ```bash
 uv run argus start \
-  -r targets/flowmart \
+  -r evaluation/targets/flowmart \
   -w eval-flowmart-invariant \
   --yolo \
   --set 'source_mode=stripped' \
@@ -116,9 +116,9 @@ uv run argus start \
 Equivalent scan roots for the remaining datasets are:
 
 ```text
-targets/VAmPI
-targets/crAPI/services/workshop
-targets/crAPI/services/community
+evaluation/targets/VAmPI
+evaluation/targets/crAPI/services/workshop
+evaluation/targets/crAPI/services/community
 ```
 
 T16 will consume these JSON files to calculate recall/precision. T17 will add the

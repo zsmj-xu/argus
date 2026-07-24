@@ -12,12 +12,54 @@ components:
     tokenAuth:
       type: http
       scheme: bearer
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username: {type: string, example: mallory}
+        password: {type: string, example: Test1234!}
+        role: {type: string, enum: [user, admin], example: admin}
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username: {type: string, example: alice}
+        password: {type: string, example: alice-pw}
+    ListingRequest:
+      type: object
+      required: [title, price]
+      properties:
+        title: {type: string, example: second-hand camera}
+        price: {type: integer, minimum: 1, example: 5000}
+    OrderRequest:
+      type: object
+      required: [listing_id]
+      properties:
+        listing_id: {type: integer, example: 1}
+    CouponIssueRequest:
+      type: object
+      required: [code, issued_to, amount]
+      properties:
+        code: {type: string, example: TEST50}
+        issued_to: {type: integer, example: 1}
+        amount: {type: integer, example: 5000}
+    CouponRedeemRequest:
+      type: object
+      required: [code]
+      properties:
+        code: {type: string, example: WELCOME50}
 
 paths:
   /users/register:
     post:
       summary: 注册新用户
       operationId: api.users.register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RegisterRequest'}
       responses:
         '200': {description: ok}
 
@@ -25,6 +67,11 @@ paths:
     post:
       summary: 登录
       operationId: api.users.login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/LoginRequest'}
       responses:
         '200': {description: ok}
 
@@ -63,6 +110,11 @@ paths:
       summary: 挂出商品
       security: [{tokenAuth: []}]
       operationId: api.listings.create_listing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ListingRequest'}
       responses:
         '200': {description: ok}
 
@@ -73,6 +125,11 @@ paths:
       operationId: api.listings.update_listing
       parameters:
         - {name: listing_id, in: path, required: true, schema: {type: integer}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ListingRequest'}
       responses:
         '200': {description: ok}
 
@@ -81,6 +138,11 @@ paths:
       summary: 下单
       security: [{tokenAuth: []}]
       operationId: api.orders.create_order
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/OrderRequest'}
       responses:
         '200': {description: ok}
 
@@ -129,6 +191,11 @@ paths:
       summary: 签发优惠券(管理功能)
       security: [{tokenAuth: []}]
       operationId: api.coupons.issue_coupon
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CouponIssueRequest'}
       responses:
         '200': {description: ok}
 
@@ -137,5 +204,23 @@ paths:
       summary: 兑换优惠券
       security: [{tokenAuth: []}]
       operationId: api.coupons.redeem_coupon
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CouponRedeemRequest'}
       responses:
         '200': {description: ok}
+
+  /support/preview:
+    get:
+      summary: 预览客服消息
+      operationId: api.support.preview_message
+      parameters:
+        - {name: message, in: query, required: true, schema: {type: string}, example: '<script>alert(1)</script>'}
+      responses:
+        '200':
+          description: HTML preview
+          content:
+            text/html:
+              schema: {type: string}

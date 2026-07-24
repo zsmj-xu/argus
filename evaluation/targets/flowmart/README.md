@@ -28,7 +28,15 @@ crAPI/VAmPI 的漏洞大多在**单个 handler 内**就能判定(这一处缺个
 所有漏洞都落在 logic-graph 的 5 类不变量内:
 ownership / authentication / role / replay / trust_boundary。
 
-## 运行(仅静态分析用,无需真起服务)
+## 运行
 
-logic-graph 只做静态图分析,不需要真的跑起来。目录结构与 VAmPI 一致,
-骨架抽取器按 Connexion `operationId` + `security` 解析路由。
+Argus 静态图分析不要求服务运行。为了能用同一源码做 Shannon 黑盒+源码对比,
+本目录同时提供一个不改变 handler 实现的 Flask 装配层:
+
+```bash
+docker compose up -d --build
+curl http://localhost:5012/health
+curl http://localhost:5012/openapi.json
+```
+
+目录结构与 VAmPI 一致,骨架抽取器按 OpenAPI `operationId` + `security` 解析路由。

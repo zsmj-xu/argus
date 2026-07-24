@@ -1,0 +1,40 @@
+# Shannon discovery-only configuration for the runnable flowmart benchmark.
+
+description: >
+  flowmart is a deliberately vulnerable Flask marketplace API. It contains ownership,
+  role, authentication, trust-boundary, and replay flaws spanning multiple handlers.
+  OpenAPI is available at /openapi.json. VULN=1 is enabled.
+
+vuln_classes: [injection, xss, auth, authz, ssrf]
+exploit: "false"
+
+authentication:
+  login_type: api
+  login_url: "http://host.docker.internal:5012/users/login"
+  credentials:
+    username: "alice"
+    password: "alice-pw"
+  login_flow:
+    - "POST http://host.docker.internal:5012/users/login with JSON {\"username\":\"alice\",\"password\":\"alice-pw\"}."
+    - "Read the token field and use Authorization: Bearer <token> for authenticated requests."
+    - "Seed users are alice/alice-pw, bob/bob-pw, and admin carol/carol-pw."
+  success_condition:
+    type: text_contains
+    value: "token"
+
+rules:
+  focus:
+    - {description: "Order state and ownership flows", type: url_path, value: "/orders"}
+    - {description: "Coupon ownership flow", type: url_path, value: "/coupons"}
+    - {description: "User, role, wallet controls", type: url_path, value: "/users"}
+    - {description: "Wallet ownership", type: url_path, value: "/wallets"}
+  avoid: []
+
+rules_of_engagement: |
+  This is a local synthetic benchmark containing test data only.
+  Discovery only: exploit=false. Do not perform destructive exploitation.
+  Follow order.listing_id -> listing.seller_id for seller ownership and track the
+  create -> pay -> ship -> return -> refund state machine across handlers.
+
+pipeline:
+  max_concurrent_pipelines: 1

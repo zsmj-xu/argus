@@ -53,6 +53,19 @@ class ScoreResult(TypedDict):
     matched: list[MatchedFinding]
 
 
+class DetectionScoreResult(TypedDict):
+    """Recall-only result for incomplete ground truth.
+
+    Findings that do not match the ground truth are intentionally not labelled as
+    false positives: an incomplete corpus cannot adjudicate them.
+    """
+
+    recall: float
+    tp: int
+    fn: int
+    matched: list[MatchedFinding]
+
+
 @dataclass(frozen=True)
 class _GroundTruth:
     id: str
@@ -60,6 +73,7 @@ class _GroundTruth:
     class_is_invariant: bool
     file: str
     line: int | None
+    end_line: int | None
     handler: str | None
 
 
@@ -109,6 +123,36 @@ def score(findings: list[Finding], ground_truth: dict[str, Any]) -> ScoreResult:
     }
 
 
+def score_detection(findings: list[Finding], ground_truth: dict[str, Any]) -> DetectionScoreResult:
+    """Measure whether known vulnerabilities were found using broad detection families.
+
+    A match requires the same source anchor and uses one-to-one assignment, but it
+    treats auth/authz as one access-control detection family. Injection, XSS, and
+    SSRF remain distinct so an unrelated nearby finding cannot satisfy the GT.
+    Fine-grained classification is evaluated separately.
+    """
+    expected = _ground_truth_entries(ground_truth)
+    candidates = _detection_candidates(findings, expected)
+    matched_by_gt = _maximum_matching(len(findings), candidates)
+    matched: list[MatchedFinding] = [
+        {
+            "ground_truth_id": item.id,
+            "finding_index": matched_by_gt[ground_truth_index],
+            "finding_id": findings[matched_by_gt[ground_truth_index]]["id"],
+        }
+        for ground_truth_index, item in enumerate(expected)
+        if ground_truth_index in matched_by_gt
+    ]
+    tp = len(matched)
+    fn = len(expected) - tp
+    return {
+        "recall": tp / len(expected) if expected else 0.0,
+        "tp": tp,
+        "fn": fn,
+        "matched": matched,
+    }
+
+
 def _ground_truth_entries(payload: dict[str, Any]) -> list[_GroundTruth]:
     raw_entries = payload.get("vulnerabilities", payload.get("vulns", []))
     if not isinstance(raw_entries, list):
@@ -136,7 +180,7 @@ def _ground_truth_entries(payload: dict[str, Any]) -> list[_GroundTruth]:
         else:
             raise ValueError(f"ground truth entry {ground_truth_id!r} has no vulnerability class")
 
-        file, line = _ground_truth_location(raw)
+        file, line, end_line = _ground_truth_location(raw)
         if not file:
             raise ValueError(f"ground truth entry {ground_truth_id!r} has no source file")
 
@@ -148,20 +192,23 @@ def _ground_truth_entries(payload: dict[str, Any]) -> list[_GroundTruth]:
                 class_is_invariant=class_is_invariant,
                 file=file,
                 line=line,
+                end_line=end_line,
                 handler=handler if isinstance(handler, str) and handler else None,
             )
         )
     return entries
 
 
-def _ground_truth_location(raw: dict[str, Any]) -> tuple[str, int | None]:
+def _ground_truth_location(raw: dict[str, Any]) -> tuple[str, int | None, int | None]:
     location = raw.get("location")
     file = raw.get("file")
     line = raw.get("line")
+    end_line = raw.get("end_line")
 
     if isinstance(location, dict):
         file = location.get("file", file)
         line = location.get("line", line)
+        end_line = location.get("end_line", end_line)
     elif isinstance(location, str):
         file, location_line = _split_file_line(location)
         if line is None:
@@ -169,11 +216,16 @@ def _ground_truth_location(raw: dict[str, Any]) -> tuple[str, int | None]:
 
     normalized_file = _normalize_path(file) if isinstance(file, str) else ""
     normalized_line = line if isinstance(line, int) and not isinstance(line, bool) and line > 0 else None
+    normalized_end_line = (
+        end_line if isinstance(end_line, int) and not isinstance(end_line, bool) and end_line > 0 else None
+    )
     if normalized_line is None and normalized_file:
         source = raw.get("source")
         if isinstance(source, str):
             normalized_line = _line_from_source(source, normalized_file)
-    return normalized_file, normalized_line
+    if normalized_line is None or normalized_end_line is None or normalized_end_line < normalized_line:
+        normalized_end_line = normalized_line
+    return normalized_file, normalized_line, normalized_end_line
 
 
 def _split_file_line(value: str) -> tuple[str, int | None]:
@@ -208,6 +260,34 @@ def _candidates(findings: list[Finding], expected: list[_GroundTruth]) -> list[_
             if quality is not None:
                 candidates.append(_Candidate(finding_index, ground_truth_index, quality))
     return candidates
+
+
+def _detection_candidates(findings: list[Finding], expected: list[_GroundTruth]) -> list[_Candidate]:
+    candidates: list[_Candidate] = []
+    for finding_index, finding in enumerate(findings):
+        finding_id = finding.get("id")
+        if not isinstance(finding_id, str) or not finding_id:
+            continue
+        for ground_truth_index, item in enumerate(expected):
+            if not _compatible_detection_family(finding.get("vuln_class"), item.vuln_class):
+                continue
+            quality = _anchor_quality(finding, item)
+            if quality is not None:
+                candidates.append(_Candidate(finding_index, ground_truth_index, quality))
+    return candidates
+
+
+def _compatible_detection_family(finding_class: object, expected_class: str) -> bool:
+    if not isinstance(finding_class, str):
+        return False
+    actual = _normalize_class(finding_class)
+    expected = _normalize_class(expected_class)
+    access_control = {"auth", "authz", "authentication", "ownership", "role", "trust_boundary"}
+    if actual in access_control and expected in access_control:
+        return True
+    if actual == "business_logic" and expected in _INVARIANT_KINDS:
+        return True
+    return actual == expected
 
 
 def _compatible_class(finding_class: str, ground_truth: _GroundTruth) -> bool:
@@ -253,7 +333,11 @@ def _anchor_quality(finding: Finding, ground_truth: _GroundTruth) -> int | None:
 
     for location in same_file_locations:
         if ground_truth.line is not None:
-            distance = abs(location["line"] - ground_truth.line)
+            end_line = ground_truth.end_line or ground_truth.line
+            if ground_truth.line <= location["line"] <= end_line:
+                distance = 0
+            else:
+                distance = min(abs(location["line"] - ground_truth.line), abs(location["line"] - end_line))
             if distance <= _LINE_TOLERANCE:
                 best = max(best or 0, 300 - distance)
             continue
@@ -301,6 +385,12 @@ def _node_symbol(node_id: str) -> str | None:
     elif node_id.startswith(("function:", "method:")):
         symbol = node_id.rsplit(":", 1)[-1]
     if symbol is None or not re.search(r"[A-Za-z]", symbol):
+        return None
+    # Current codegraph builds use IDs such as ``function:<32-hex-digest>``.
+    # The digest is an opaque identity, not a structured handler name. Treating
+    # it as a symbol suppresses the evidence-text fallback and makes every
+    # handler-only ground-truth anchor impossible to match.
+    if re.fullmatch(r"[0-9a-fA-F]{16,}", symbol):
         return None
     return symbol
 

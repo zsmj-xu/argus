@@ -81,20 +81,20 @@
 **公平对照口径(关键)**:
 - 只比**漏洞发现层**(Shannon Phase 3 `vuln-*` vs Argus vuln 分析器)。Shannon 侧**关闭 Exploitation**(`exploit: "false"`)——因为 Argus 定义上就不做动态验证,带上会口径错位。
 - Argus 侧只启用**移植自 Shannon 的 5 类分析器**(injection/xss/auth/authz/ssrf),**不启用** business-logic/invariant 新功能。
-- 两边对**同一份 `ground_truth/vampi.json`** 用**同一个 `argus/eval/score.py`** 打分,唯一变量是"哪个工具检出的"。
+- 两边对**同一份 `evaluation/ground_truth/vampi.json`** 打分。检出召回与 taxonomy agreement 分离;未完整裁决的 GT 不直接产生自动 Precision。
 
 **范式差异(须写进结论,非隐藏)**:Shannon 黑盒动态+源码、有 Exploitation 验证层;Argus 纯白盒静态、只输出候选清单、无验证层。
 
 | Task | 标题 | 归属 | 依赖 | 状态 | 说明 |
 |---|---|---|---|---|---|
-| C1 | 部署 VAmPI 到 Docker | codex | — | ✅ done | 用 `targets/VAmPI` 自带 `docker-compose.yaml`/`Dockerfile` 起运行中目标。实际端口:`:5001`(vulnerable=0)/`:5002`(vulnerable=1,对照用此)。OpenAPI 12 端点齐全;`_debug` 无认证返回明文密码→vuln 模式确认;认证链路 register{username,password,email}→login→`auth_token`→Bearer 已通 |
+| C1 | 部署 VAmPI 到 Docker | codex | — | ✅ done | 用 `evaluation/targets/VAmPI` 自带 `docker-compose.yaml`/`Dockerfile` 起运行中目标。实际端口:`:5001`(vulnerable=0)/`:5002`(vulnerable=1,对照用此)。OpenAPI 12 端点齐全;`_debug` 无认证返回明文密码→vuln 模式确认;认证链路 register{username,password,email}→login→`auth_token`→Bearer 已通 |
 | C2 | 写 Shannon 对照 config | codex | — | ✅ done | `exploit: "false"` + scope 到 5 类 vuln 的 yaml。参考 Shannon `apps/worker/configs/example-config.yaml`。产出 `docs/comparisons/configs/shannon-vampi.yaml`。VAmPI 纯 API 认证用 `login_type: api` + 详细 login_flow(Shannon prompt 对 api 类型无专门章节,C3 跑时迭代) |
 | C3 | 跑 Shannon 摸清输出格式 | codex | C1,C2 | ✅ done | **关键前置(风险 R1)**:跑一次 Shannon(exploit=false)对 VAmPI。产物在 `shannon/workspaces/vampi-shannon/deliverables/`:5 个 `*_exploitation_queue.json`(auth/authz/injection/ssrf/xss)+ recon/pre-recon deliverable + comprehensive report。格式与 queue-schemas.ts 预研一致;`vulnerable_code_location` 用 `file:line` 或 `file:line-line`(范围)。踩坑:worker 镜像构建 5 次(buildx daemon 被杀→nohup detach + 网络重试)、preflight 三拦(git init + `<>` 转义 + host.docker.internal) |
-| C4 | 配 Argus 5 类 arm | codex | — | ✅ done | 只启用 injection/xss/auth/authz/ssrf、不带新功能的 arm 配置。图富化可用 business-flow 做事实层,但不加新漏洞类。产出 `docs/comparisons/configs/argus-vampi-5class.yaml`;config 加载 + 5 类 analyzer + business-flow 发现均验证通过(missing NONE) |
-| C5 | Argus 跑 VAmPI(5 类 arm) | codex | C4 | ✅ done | 首跑 120s ReadTimeout(business-flow),最小改 `argus/llm/client.py` 超时可配(`ARGUS_LLM_TIMEOUT` 默认 600s,commit `94aa7cd`),resume 续跑全 6 节点完成。产出 `runs/vampi-5class/findings.json`(12 条)+ `report.md`。Argus 侧对 vampi.json 打分:recall=0.500 precision=0.167(TP=2 FP=10 FN=2);2 个 FN 是 score.py invariant 兼容口径(massassign→trust_boundary / debug→authentication 只认 business_logic/auth),非检测遗漏——C7 须声明 |
-| C6 | Shannon 输出归一适配层 | — | C3 | pending | 把 Shannon findings 转成 `score()` 可吃的 `{vuln_class, file, line/handler}` 形态。本对照主要新代码 |
-| C7 | 对照打分 + 出表 | codex | C5,C6 | ✅ done | 复用 `argus/eval/score.py` 对同一 `vampi.json` 给两边打分,产出对照表。Shannon recall=0.500/precision=0.100(TP=2 FP=18 FN=2),Argus recall=0.500/precision=0.167(TP=2 FP=10 FN=2)。两边命中 GT 完全一致(bola-books+bola-update-password);人工核对两边都 4/4 检出全部 in_scope |
-| C8 | 对照文档落盘 | codex | C7 | ✅ done | `docs/comparisons/vampi-shannon-vs-argus.md`,含范式差异声明 + 口径限制对称性分析 + 结论。跑通标准达成:两边对同一 GT 打分产出对照表 |
+| C4 | 配 Argus 5 类 arm | codex | — | ✅ done | 正式 arm 只启用 injection/xss/auth/authz/ssrf，`strict_outputs=true`，不启用额外 business-flow/invariant 富化；配置加载测试通过。 |
+| C5 | Argus 跑 VAmPI(5 类 arm) | codex | C4 | ✅ done | `vampi-5class-final` 完成，14 条 findings；Shannon/Argus 对 6 条 comparison GT 均为 6/6。|
+| C6 | Shannon 输出归一适配层 | codex | C3 | ✅ done | 把 Shannon findings 转成统一 `Finding`;注入类优先锚定 sink,支持 `file:line-line`。|
+| C7 | 对照打分 + 出表 | codex | C5,C6 | ✅ done | Detection Recall 与 taxonomy agreement 分离；VAmPI 两边均检出 6/6、taxonomy agreement 均 6/6；最终裁决为 Shannon 17 true/3 duplicate、Argus 13 true/1 duplicate。|
+| C8 | 对照文档落盘 | codex | C7 | ✅ done | `docs/comparisons/vampi-shannon-vs-argus.md`,含范式差异、分类诊断、按类别召回和人工裁决。|
 
 **依赖图**:
 ```
@@ -104,9 +104,28 @@ C4(A-config) ─→ C5(Argus跑批) ──────────────�
 ```
 关键路径:C1→C3→C6→C7→C8。C4→C5(Argus 侧)可并行。
 
-**本轮非目标**:crAPI/flowmart 扩展、business-logic/invariant 对照、Shannon 验证层对照、性能/成本对照。
+**阶段 C 非目标**:crAPI/flowmart 扩展、business-logic/invariant 对照、Shannon 验证层对照、性能/成本对照。crAPI/flowmart 已在阶段 D 接续。
 
 **环境资源(已确认就位)**:VAmPI 自带 Docker;Shannon 支持 `exploit:"false"`;Argus 侧 `.env` 已配 LLM gateway 凭据(`ARGUS_LLM_*`);Shannon 侧需自己的 AI 凭据(见 Shannon `.env`)。
+
+---
+
+## 阶段 D —— 多靶场扩展与可重复矩阵
+
+**目标**:把 VAmPI 单靶场方法扩展到 flowmart 与 crAPI,所有缺失结果显式记为
+`unavailable/N/A`,不以 0 分替代外部阻塞。
+
+| Task | 标题 | 状态 | 说明 |
+|---|---|---|---|
+| D1 | 扩充 VAmPI comparison GT + 裁决 | ✅ done | comparison scope 6 条；final 纯五类 arm 两边 6/6；34 条 finding 全裁决。 |
+| D2 | 通用矩阵编排 | ✅ done | `comparison-matrix.yaml` + `run_comparison_matrix.py`;四评测单元 |
+| D3 | flowmart 可运行服务 | ✅ done | Flask wrapper、OpenAPI、隔离运行时测试 2/2 通过；Docker Compose 已真实构建启动，`:5012` health/OpenAPI 和 XSS/authz 动态回归通过。 |
+| D4 | flowmart 双侧跑批 | 🟡 Argus done, Shannon authorization needed | Argus `flowmart-5class-final` 对 comparison scope 6/6；Shannon 需用户授权向外部 LLM 发送本地源码后执行。 |
+| D5 | crAPI comparison scope | ✅ done | workshop 7 条、community 2 条（修正了无证据的公开论坛 ownership 和 coupon amount 条目）;两套 Argus 五类配置 |
+| D6 | crAPI 双侧跑批 | 🟡 Argus done, Shannon/deployment needed | workshop Argus 6/7 (0.857)，community Argus 2/2 (1.000)；两侧 Shannon 仍需完整部署与授权，不能伪造双侧结果 |
+| D7 | XSS/SSRF 正样本扩展 | ✅ assets done | flowmart 新增 reflected XSS differential GT;crAPI workshop 已有 SSRF GT;待双侧跑批验证 |
+
+状态与恢复命令见 `docs/comparisons/EXPANSION-STATUS.md`。
 
 ---
 

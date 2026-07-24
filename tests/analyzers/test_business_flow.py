@@ -20,7 +20,9 @@ import json
 import os
 from typing import Any
 
-from argus.analyzers.business_flow.analyzer import ANALYZER
+import pytest
+
+from argus.analyzers.business_flow.analyzer import ANALYZER, BusinessFlowOutputError
 from argus.contracts import AnalysisContext, Analyzer, Phase, SourceMode
 from argus.graph.codegraph import CodegraphHandle
 
@@ -288,6 +290,39 @@ def test_unparseable_llm_output_degrades_gracefully() -> None:
     for section in ("endpoints", "handlers", "resources", "operations", "edges", "business_flows"):
         assert section in enrichment
         assert isinstance(enrichment[section], list)
+
+
+def test_strict_output_mode_rejects_unparseable_enrichment() -> None:
+    ctx = _ctx("not JSON")
+    ctx["config"]["strict_outputs"] = True
+
+    with pytest.raises(BusinessFlowOutputError, match="invalid JSON"):
+        ANALYZER.run(ctx)
+
+
+def test_business_flow_max_tokens_can_be_configured() -> None:
+    ctx = _ctx(_fenced(_LLM_GRAPH))
+    ctx["config"]["business-flow"] = {"max_tokens": 16384}
+
+    ANALYZER.run(ctx)
+
+    llm = ctx["llm"]
+    assert isinstance(llm, _FakeLLM)
+    assert llm.calls[0]["max_tokens"] == 16384
+
+
+def test_business_flow_can_batch_large_skeletons() -> None:
+    ctx = _ctx(_fenced(_LLM_GRAPH))
+    ctx["config"]["business-flow"] = {"batch_size": 1}
+
+    result = ANALYZER.run(ctx)
+
+    llm = ctx["llm"]
+    assert isinstance(llm, _FakeLLM)
+    assert len(llm.calls) == 2
+    endpoints = result["enrichment"]["endpoints"]
+    assert len(endpoints) == 2
+    assert len({endpoint["id"] for endpoint in endpoints}) == 2
 
 
 def test_llm_actually_invoked_with_prompt() -> None:

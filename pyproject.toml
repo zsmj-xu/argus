@@ -18,11 +18,11 @@ argus = "argus.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["argus*"]
-exclude = ["targets*", "ground_truth*", "tests*"]
+exclude = ["evaluation*", "tests*"]
 
 [tool.ruff]
 line-length = 120
-extend-exclude = ["targets"]
+extend-exclude = ["evaluation/targets"]
 
 [tool.mypy]
 python_version = "3.11"

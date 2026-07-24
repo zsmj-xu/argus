@@ -8,6 +8,10 @@ venv/
 runs/
 .codegraph/
 .shannon/
+evaluation/targets/**/.git/
+
+# macOS metadata
+.DS_Store
 
 # Env
 .env

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from scripts.compare_shannon_argus import compare, render_markdown
+from evaluation.scripts.compare_shannon_argus import compare, render_markdown
 
 
 def _write_shannon_queue(deliverables: Path, cls: str, entries: list[dict]) -> None:
@@ -95,10 +95,73 @@ def test_compare_scores_both_sides_against_same_gt(tmp_path: Path) -> None:
 
     result = compare(deliverables, argus_path, gt_path)
 
-    assert result["shannon"]["score"]["tp"] == 1
-    assert result["shannon"]["score"]["fn"] == 1
-    assert result["argus"]["score"]["tp"] == 2
-    assert result["argus"]["score"]["fn"] == 0
+    assert result["shannon"]["detection_score"]["tp"] == 1
+    assert result["shannon"]["detection_score"]["fn"] == 1
+    assert result["argus"]["detection_score"]["tp"] == 2
+    assert result["argus"]["detection_score"]["fn"] == 0
+    assert "precision" not in result["argus"]["taxonomy_agreement"]
+    assert "fp" not in result["argus"]["taxonomy_agreement"]
+    assert result["argus"]["per_class_detection"]["authz"]["recall"] == 1.0
+    assert result["argus"]["per_class_detection"]["xss"]["recall"] is None
+
+
+def test_compare_uses_comparison_scope_without_changing_invariant_scope(tmp_path: Path) -> None:
+    deliverables = tmp_path / "deliverables"
+    _write_shannon_queue(
+        deliverables,
+        "injection",
+        [
+            {
+                "ID": "SQL-1",
+                "vulnerability_type": "SQL Injection",
+                "sink_call": "models/user_model.py:73 execute",
+            }
+        ],
+    )
+    argus_path = tmp_path / "argus" / "findings.json"
+    _write_argus_findings(
+        argus_path,
+        [
+            {
+                "id": "argus:injection:1",
+                "analyzer": "injection",
+                "vuln_class": "injection",
+                "title": "SQL Injection",
+                "severity": "high",
+                "confidence": "high",
+                "locations": [{"file": "models/user_model.py", "line": 73, "node_id": "method:User.get_user"}],
+                "data_flow": "",
+                "rationale": "",
+                "evidence": "",
+                "remediation": "",
+            }
+        ],
+    )
+    gt_path = tmp_path / "vampi.json"
+    gt_path.write_text(
+        json.dumps(
+            {
+                "vulnerabilities": [
+                    {
+                        "id": "sqli",
+                        "in_scope": False,
+                        "comparison_in_scope": True,
+                        "comparison_vuln_class": "injection",
+                        "invariant_kind": "n/a",
+                        "location": "models/user_model.py",
+                        "line": 73,
+                        "handler": "get_user",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = compare(deliverables, argus_path, gt_path)
+
+    assert result["shannon"]["detection_score"]["tp"] == 1
+    assert result["argus"]["detection_score"]["tp"] == 1
 
 
 def test_overlap_computed_correctly(tmp_path: Path) -> None:
@@ -159,3 +222,41 @@ def test_render_markdown_contains_both_tools(tmp_path: Path) -> None:
     assert "Argus" in md
     assert "Recall" in md
     assert "Precision" in md
+    assert "不报告 Precision" in md
+    assert "N/A (无正样本)" in md
+
+
+def test_adjudication_reports_unknown_findings_instead_of_assuming_false(tmp_path: Path) -> None:
+    deliverables = tmp_path / "deliverables"
+    _write_shannon_queue(
+        deliverables,
+        "auth",
+        [{"ID": "A-1", "vulnerability_type": "Missing auth", "vulnerable_code_location": "api/users.py:10"}],
+    )
+    argus_path = tmp_path / "argus" / "findings.json"
+    _write_argus_findings(argus_path, [])
+    gt_path = tmp_path / "gt.json"
+    gt_path.write_text(
+        json.dumps(
+            {
+                "vulnerabilities": [
+                    {
+                        "id": "auth",
+                        "in_scope": True,
+                        "invariant_kind": "authentication",
+                        "location": "api/users.py:10",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    adjudication_path = tmp_path / "adjudication.json"
+    adjudication_path.write_text(json.dumps({"shannon": {}, "argus": {}}), encoding="utf-8")
+
+    result = compare(deliverables, argus_path, gt_path, adjudication_path)
+
+    summary = result["shannon"]["adjudication"]
+    assert summary["adjudicated"] == 0
+    assert summary["unadjudicated"] == ["shannon:auth:A-1"]
+    assert summary["validity_precision"] is None

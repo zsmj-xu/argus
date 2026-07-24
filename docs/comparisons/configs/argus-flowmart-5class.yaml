@@ -1,0 +1,15 @@
+# Fair discovery arm for Argus vs Shannon on flowmart.
+analyzers:
+  # Cross-target comparison uses only the five detector analyzers. Optional
+  # semantic enrichment is evaluated separately and cannot change this arm.
+  enrichment: []
+  vuln:
+    - injection
+    - xss
+    - auth
+    - authz
+    - ssrf
+
+checkpoints: false
+source_mode: stripped
+strict_outputs: true

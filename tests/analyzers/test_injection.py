@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import pytest
+
+from argus.analyzers.shannon import AnalyzerOutputError
 from argus.analyzers.injection.analyzer import ANALYZER
 from argus.contracts import Confidence, Phase, Severity
 from argus.orchestration.registry import discover_analyzers
@@ -26,6 +29,15 @@ def test_injection_analyzer_contract_and_finding() -> None:
 def test_injection_bad_node_is_discarded() -> None:
     llm = MockLLM(response_for("injection").replace("api/auth.py::authenticate", "missing:node"))
     assert ANALYZER.run(context_for(llm))["findings"] == []
+
+
+def test_strict_output_mode_rejects_invalid_finding() -> None:
+    llm = MockLLM(response_for("injection").replace("api/auth.py::authenticate", "missing:node"))
+    ctx = context_for(llm)
+    ctx["config"]["strict_outputs"] = True
+
+    with pytest.raises(AnalyzerOutputError, match="invalid finding"):
+        ANALYZER.run(ctx)
 
 
 def test_registry_discovers_all_t08_analyzers() -> None:

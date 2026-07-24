@@ -1,0 +1,8 @@
+services:
+  flowmart-vulnerable:
+    build: .
+    container_name: flowmart-vulnerable
+    ports:
+      - "5012:5000"
+    environment:
+      - VULN=1

@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "note": "逐条人工核对 VAmPI 两侧 findings。true 表示独立真实问题, duplicate 表示真实但与另一条 finding 同一根因; 本文件不把任何未核对 finding 默认为 false。",
+  "shannon": {
+    "shannon:injection:INJ-VULN-01": ["true", "vampi-sqli-getuser"],
+    "shannon:auth:AUTH-VULN-01": ["true", "auth-weak-jwt-secret"],
+    "shannon:auth:AUTH-VULN-02": ["true", "auth-transport-tls"],
+    "shannon:auth:AUTH-VULN-03": ["true", "auth-token-cache"],
+    "shannon:auth:AUTH-VULN-04": ["true", "auth-rate-limit"],
+    "shannon:auth:AUTH-VULN-05": ["true", "auth-password-storage"],
+    "shannon:auth:AUTH-VULN-06": ["true", "vampi-auth-debug"],
+    "shannon:auth:AUTH-VULN-07": ["true", "vampi-user-enum-login"],
+    "shannon:auth:AUTH-VULN-08": ["true", "vampi-massassign-admin"],
+    "shannon:auth:AUTH-VULN-09": ["true", "auth-default-credentials"],
+    "shannon:auth:AUTH-VULN-10": ["true", "auth-token-revocation"],
+    "shannon:auth:AUTH-VULN-11": ["true", "auth-password-policy"],
+    "shannon:auth:AUTH-VULN-12": ["true", "auth-bearer-scheme"],
+    "shannon:authz:AUTHZ-VULN-01": ["true", "vampi-bola-books-get"],
+    "shannon:authz:AUTHZ-VULN-02": ["true", "vampi-bola-update-password"],
+    "shannon:authz:AUTHZ-VULN-03": ["duplicate", "vampi-auth-debug"],
+    "shannon:authz:AUTHZ-VULN-04": ["duplicate", "vampi-massassign-admin"],
+    "shannon:authz:AUTHZ-VULN-05": ["duplicate", "auth-weak-jwt-secret"],
+    "shannon:authz:AUTHZ-VULN-06": ["true", "auth-database-reset"],
+    "shannon:authz:AUTHZ-VULN-07": ["true", "auth-unauthenticated-user-lookup"]
+  },
+  "argus": {
+    "injection:injection:b169eb9d5d09": ["true", "vampi-sqli-getuser"],
+    "auth:auth:b162af1163c7": ["true", "auth-password-storage"],
+    "auth:auth:61d36655e398": ["true", "vampi-user-enum-login"],
+    "auth:auth:28181261e32c": ["true", "vampi-massassign-admin"],
+    "auth:auth:097a195dcab5": ["true", "vampi-bola-update-password"],
+    "authz:authz:6e55ca74c6ec": ["true", "vampi-bola-books-get"],
+    "authz:authz:e6331c14cfec": ["duplicate", "vampi-massassign-admin"],
+    "authz:authz:fb7cfdd86c0f": ["duplicate", "vampi-bola-update-password"],
+    "authz:authz:883c18368978": ["true", "vampi-auth-debug"],
+    "authz:authz:afe677571919": ["true", "auth-unauthenticated-user-lookup"],
+    "authz:authz:e169117814ac": ["true", "auth-unauthenticated-email-disclosure"],
+    "authz:authz:2e463db74f96": ["true", "auth-database-reset"]
+  }
+}

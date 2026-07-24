@@ -7,6 +7,9 @@
     {
       "id": "flowmart-ship-seller-ownership",
       "in_scope": true,
+      "comparison_in_scope": true,
+      "comparison_vuln_class": "authz",
+      "comparison_location": {"file": "api/orders.py", "line": 78, "end_line": 85},
       "cross_handler": true,
       "invariant_kind": "ownership",
       "vuln_type": "BOLA / 越权发货",
@@ -19,6 +22,7 @@
     {
       "id": "flowmart-refund-replay",
       "in_scope": true,
+      "comparison_in_scope": false,
       "cross_handler": true,
       "invariant_kind": "replay",
       "vuln_type": "退款重放 / 幂等性破坏",
@@ -31,6 +35,9 @@
     {
       "id": "flowmart-coupon-cross-user-ownership",
       "in_scope": true,
+      "comparison_in_scope": true,
+      "comparison_vuln_class": "authz",
+      "comparison_location": {"file": "api/coupons.py", "line": 58, "end_line": 65},
       "cross_handler": true,
       "invariant_kind": "ownership",
       "vuln_type": "跨用户越权兑换 / IDOR",
@@ -43,6 +50,9 @@
     {
       "id": "flowmart-register-mass-assign-role",
       "in_scope": true,
+      "comparison_in_scope": true,
+      "comparison_vuln_class": "authz",
+      "comparison_location": {"file": "api/users.py", "line": 26, "end_line": 30},
       "cross_handler": false,
       "invariant_kind": "trust_boundary",
       "vuln_type": "Mass assignment / 提权",
@@ -55,6 +65,9 @@
     {
       "id": "flowmart-listusers-bfla-role",
       "in_scope": true,
+      "comparison_in_scope": true,
+      "comparison_vuln_class": "authz",
+      "comparison_location": {"file": "api/users.py", "line": 62, "end_line": 66},
       "cross_handler": false,
       "invariant_kind": "role",
       "vuln_type": "BFLA / 功能级越权",
@@ -67,6 +80,9 @@
     {
       "id": "flowmart-wallet-missing-auth",
       "in_scope": true,
+      "comparison_in_scope": true,
+      "comparison_vuln_class": "auth",
+      "comparison_location": {"file": "api/users.py", "line": 76, "end_line": 86},
       "cross_handler": false,
       "invariant_kind": "authentication",
       "vuln_type": "缺失鉴权 + IDOR",
@@ -75,6 +91,20 @@
       "endpoint": "GET /wallets/{user_id}",
       "description": "vuln 版查钱包余额既不要求登录、也不校验归属,任意人可用 user_id 枚举查看他人余额。对照:get_me 只暴露当前用户自己。单 handler 内即可判定(缺鉴权部分);其 ownership 缺失亦可判定。",
       "source": "api/users.py get_wallet VULN 分支无 current_user 校验、无归属校验"
+    },
+    {
+      "id": "flowmart-xss-support-preview",
+      "in_scope": false,
+      "comparison_in_scope": true,
+      "comparison_vuln_class": "xss",
+      "comparison_location": {"file": "api/support.py", "line": 17, "end_line": 19},
+      "invariant_kind": "n/a",
+      "vuln_type": "Reflected XSS",
+      "location": "api/support.py",
+      "handler": "preview_message",
+      "endpoint": "GET /support/preview?message=...",
+      "description": "vulnerable 分支把 message 查询参数直接插入 text/html 响应,攻击者可构造 script/event-handler payload 在访问者浏览器执行;修复分支对同一输入使用 markupsafe.escape。",
+      "source": "api/support.py:18 preview_message: VULN 分支直接渲染 message;安全分支使用 escape(message)"
     }
   ]
 }

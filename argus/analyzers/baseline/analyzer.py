@@ -51,17 +51,32 @@ class BaselineAnalyzer(AnalyzerBase):
 
     def run(self, ctx: AnalysisContext) -> AnalyzerResult:
         files, anchors = self._validate_isolation(ctx)
+        settings = ctx["config"].get(self.name, {})
+        max_tokens = settings.get("max_tokens", 8192) if isinstance(settings, dict) else 8192
+        if not isinstance(max_tokens, int) or isinstance(max_tokens, bool) or max_tokens <= 0:
+            max_tokens = 8192
+        batch_size = settings.get("batch_size", len(files)) if isinstance(settings, dict) else len(files)
+        if not isinstance(batch_size, int) or isinstance(batch_size, bool) or batch_size <= 0:
+            batch_size = len(files) or 1
 
-        sources: list[dict[str, str]] = []
-        line_counts: dict[str, int] = {}
-        for path in files:
-            stripped = strip_source(path, ctx["source"].read(path))
-            sources.append({"path": path, "source": stripped})
-            line_counts[path] = len(stripped.splitlines())
+        findings: list[Finding] = []
+        seen_ids: set[str] = set()
+        for offset in range(0, len(files), batch_size):
+            batch_files = files[offset : offset + batch_size]
+            sources: list[dict[str, str]] = []
+            line_counts: dict[str, int] = {}
+            for path in batch_files:
+                stripped = strip_source(path, ctx["source"].read(path))
+                sources.append({"path": path, "source": stripped})
+                line_counts[path] = len(stripped.splitlines())
 
-        prompt = json.dumps({"files": sources}, ensure_ascii=False, indent=2)
-        response = ctx["llm"].complete(system=self._load_prompt(), prompt=prompt)
-        findings = self._parse_findings(response, files, anchors, line_counts)
+            prompt = json.dumps({"files": sources}, ensure_ascii=False, indent=2)
+            response = ctx["llm"].complete(system=self._load_prompt(), prompt=prompt, max_tokens=max_tokens)
+            batch_findings = self._parse_findings(response, batch_files, anchors, line_counts)
+            for finding in batch_findings:
+                if finding["id"] not in seen_ids:
+                    seen_ids.add(finding["id"])
+                    findings.append(finding)
         return {"analyzer": self.name, "findings": findings, "enrichment": {}}
 
     @staticmethod

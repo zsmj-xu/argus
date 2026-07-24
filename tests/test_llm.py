@@ -3,25 +3,29 @@ import os
 
 import pytest
 
-from argus.llm import AuditedLLM
+from argus.llm import AuditedLLM, LLMOutputTruncatedError
 from argus.llm.client import load_llm_environment
 
 
 class _FakeResponse:
-    def __init__(self, text: str) -> None:
+    def __init__(self, text: str, finish_reason: str = "stop") -> None:
         self._text = text
+        self._finish_reason = finish_reason
         self.raise_calls = 0
 
     def raise_for_status(self) -> None:
         self.raise_calls += 1
 
     def json(self) -> dict:
-        return {"choices": [{"message": {"content": self._text}}]}
+        return {
+            "choices": [{"message": {"content": self._text}, "finish_reason": self._finish_reason}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
+        }
 
 
 class _FakeClient:
-    def __init__(self, text: str) -> None:
-        self.response = _FakeResponse(text)
+    def __init__(self, text: str, finish_reason: str = "stop") -> None:
+        self.response = _FakeResponse(text, finish_reason)
         self.calls: list[tuple[str, dict]] = []
 
     def post(self, url: str, *, json: dict) -> _FakeResponse:
@@ -70,8 +74,45 @@ def test_complete_returns_text_and_writes_audit(tmp_path):
     assert record["response"] == "hello from compatible model"
     assert record["model"] == "example-model"
     assert record["base_url"] == "https://llm.example.test/v1"
+    assert record["finish_reason"] == "stop"
+    assert record["usage"] == {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
     assert record["timestamp"]
     assert "test-key" not in json.dumps(record)
+
+
+def test_truncated_response_is_audited_then_rejected(tmp_path):
+    fake = _FakeClient('{"findings": [', finish_reason="length")
+    llm = AuditedLLM(
+        api_key="test-key",
+        base_url="https://llm.example.test/v1",
+        model="example-model",
+        workspace="truncated",
+        client=fake,
+        runs_root=str(tmp_path),
+    )
+
+    with pytest.raises(LLMOutputTruncatedError, match="max_tokens=8192"):
+        llm.complete(system="system", prompt="prompt")
+
+    record = json.loads((tmp_path / "truncated" / "audit" / "llm.jsonl").read_text().strip())
+    assert record["finish_reason"] == "length"
+    assert record["response"] == '{"findings": ['
+
+
+def test_disable_thinking_adds_provider_extension(tmp_path, monkeypatch):
+    monkeypatch.setenv("ARGUS_LLM_DISABLE_THINKING", "true")
+    fake = _FakeClient("ok")
+    llm = AuditedLLM(
+        api_key="test-key",
+        base_url="https://llm.example.test/v1",
+        model="example-model",
+        workspace="no-thinking",
+        client=fake,
+        runs_root=str(tmp_path),
+    )
+
+    assert llm.complete(system="system", prompt="prompt") == "ok"
+    assert fake.calls[0][1]["thinking"] == {"type": "disabled"}
 
 
 @pytest.mark.parametrize(

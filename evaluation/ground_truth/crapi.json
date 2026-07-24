@@ -8,6 +8,9 @@
     {
       "id": "crapi-bola-order-get",
       "in_scope": true,
+      "comparison_in_scope": true,
+      "comparison_vuln_class": "authz",
+      "comparison_location": {"file": "crapi/shop/views.py", "line": 109, "end_line": 165},
       "invariant_kind": "ownership",
       "vuln_type": "BOLA / IDOR",
       "location": "crapi/shop/views.py",
@@ -19,6 +22,9 @@
     {
       "id": "crapi-bfla-admin-users",
       "in_scope": true,
+      "comparison_in_scope": true,
+      "comparison_vuln_class": "authz",
+      "comparison_location": {"file": "crapi/user/views.py", "line": 41, "end_line": 72},
       "invariant_kind": "role",
       "vuln_type": "BFLA / 功能级越权",
       "location": "crapi/user/views.py",
@@ -30,6 +36,9 @@
     {
       "id": "crapi-bfla-servicerequest-status",
       "in_scope": true,
+      "comparison_in_scope": true,
+      "comparison_vuln_class": "authz",
+      "comparison_location": {"file": "crapi/mechanic/views.py", "line": 348, "end_line": 366},
       "invariant_kind": "role",
       "vuln_type": "BFLA / 功能级越权",
       "location": "crapi/mechanic/views.py",
@@ -41,6 +50,9 @@
     {
       "id": "crapi-massassign-coupon-amount",
       "in_scope": true,
+      "comparison_in_scope": true,
+      "comparison_vuln_class": "authz",
+      "comparison_location": {"file": "crapi/shop/views.py", "line": 366, "end_line": 428},
       "invariant_kind": "trust_boundary",
       "vuln_type": "Mass assignment / 客户端可控金额",
       "location": "crapi/shop/views.py",
@@ -52,6 +64,9 @@
     {
       "id": "crapi-auth-receive-report",
       "in_scope": true,
+      "comparison_in_scope": true,
+      "comparison_vuln_class": "auth",
+      "comparison_location": {"file": "crapi/mechanic/views.py", "line": 169, "end_line": 205},
       "invariant_kind": "authentication",
       "vuln_type": "Missing authentication",
       "location": "crapi/mechanic/views.py",
@@ -63,6 +78,9 @@
     {
       "id": "crapi-sqli-coupon",
       "in_scope": false,
+      "comparison_in_scope": true,
+      "comparison_vuln_class": "injection",
+      "comparison_location": {"file": "crapi/shop/views.py", "line": 385, "end_line": 395},
       "invariant_kind": "n/a",
       "vuln_type": "SQL Injection",
       "location": "crapi/shop/views.py",
@@ -74,6 +92,9 @@
     {
       "id": "crapi-ssrf-contact-mechanic",
       "in_scope": false,
+      "comparison_in_scope": true,
+      "comparison_vuln_class": "ssrf",
+      "comparison_location": {"file": "crapi/merchant/views.py", "line": 84, "end_line": 92},
       "invariant_kind": "n/a",
       "vuln_type": "SSRF",
       "location": "crapi/merchant/views.py",
@@ -85,6 +106,7 @@
     {
       "id": "crapi-pathtraversal-download-report",
       "in_scope": false,
+      "comparison_in_scope": false,
       "invariant_kind": "n/a",
       "vuln_type": "Path traversal (缓解中)",
       "location": "crapi/mechanic/views.py",

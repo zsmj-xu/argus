@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 
-from scripts.normalize_shannon import normalize_shannon_findings
+from evaluation.scripts.normalize_shannon import normalize_shannon_findings
 
 
 def _write_queue(tmp_path: Path, filename: str, vulnerabilities: list[dict]) -> None:
@@ -72,6 +72,27 @@ def test_injection_entry_uses_source_sink_data_flow(tmp_path: Path) -> None:
     assert "source=request.args['username']" in f["data_flow"]
     assert "sink=cursor.execute" in f["data_flow"]
     assert "verdict=f-string concat into SQL" in f["evidence"]
+
+
+def test_injection_prefers_sink_location_over_route_source(tmp_path: Path) -> None:
+    _write_queue(
+        tmp_path,
+        "injection_exploitation_queue.json",
+        [
+            {
+                "ID": "INJ-02",
+                "vulnerability_type": "SQL Injection",
+                "source": "api_views/users.py:45 request username",
+                "sink_call": "models/user_model.py:73 db.session.execute",
+            }
+        ],
+    )
+
+    findings = normalize_shannon_findings(tmp_path)
+
+    assert findings[0]["locations"] == [
+        {"file": "models/user_model.py", "line": 73, "node_id": "models/user_model.py:73"}
+    ]
 
 
 def test_missing_queue_files_are_skipped(tmp_path: Path) -> None:

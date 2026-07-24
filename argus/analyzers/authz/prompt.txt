@@ -8,6 +8,9 @@ allowed to perform it. Cover all of these classes:
 
 - Horizontal privilege escalation, IDOR, and BOLA: missing ownership, membership, or tenant scope.
 - Vertical privilege escalation and BFLA: missing or incorrect role/capability checks.
+- Trust-boundary and mass-assignment failures: request-controlled roles, prices, credits, limits,
+  ownership fields, or workflow state are written to sensitive state instead of being constrained
+  by policy or derived from a server-authoritative record.
 - Context/workflow authorization: later steps fail to validate required prior state or authority.
 - Cross-tenant leakage through indirect resources, shared caches, files, notifications, or services.
 
@@ -21,9 +24,12 @@ Apply these proof obligations:
    effect do not count.
 5. Trace from the graph-identified entry or caller path to the sensitive operation. Consider
    middleware, decorators, policy helpers, query filters, callees, and enriched trust boundaries.
-6. Avoid false positives: emit a finding only when the supplied code evidence shows a reachable
+6. For mass assignment, distinguish intended administrative inputs from fields that override an
+   existing server-authoritative value. Do not invent limits or policies absent from the supplied
+   code, API contract, or enriched context.
+7. Avoid false positives: emit a finding only when the supplied code evidence shows a reachable
    sensitive operation and an absent, insufficient, misplaced, or bypassable authorization guard.
-7. Every location must use a node_id from the supplied codegraph context. Never invent node ids.
+8. Every location must use a node_id from the supplied codegraph context. Never invent node ids.
 
 Return exactly one JSON object with this shape and no prose outside it:
 

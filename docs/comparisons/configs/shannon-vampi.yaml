@@ -4,10 +4,10 @@
 # 公平口径(见 docs/superpowers/specs/2026-07-20-argus-vs-shannon-comparison-design.md §2):
 #   - 只比漏洞发现层(Shannon Phase 3 vuln-* vs Argus vuln 分析器)
 #   - Shannon 关闭 Exploitation(exploit: "false"),因 Argus 定义上不做动态验证
-#   - 两边对同一 ground_truth/vampi.json 用同一个 argus/eval/score.py 打分
+#   - 两边对同一 evaluation/ground_truth/vampi.json 用同一个 argus/eval/score.py 打分
 #
 # 目标: http://localhost:5002 (vampi-vulnerable 容器, vulnerable=1)
-# 源码: targets/VAmPI (Flask 单体 API)
+# 源码: evaluation/targets/VAmPI (Flask 单体 API)
 
 description: >
   VAmPI (Vulnerable API) — Flask 单体 API 靶场,对照实验用,vulnerable=1 模式。
@@ -58,7 +58,7 @@ rules_of_engagement: |
   - 认证:register → login → Bearer auth_token,详见 login_flow。
   - 数据:可用占位符;本靶场数据均为测试数据。
   - exploit=false:只到漏洞发现层,不执行实际利用验证(与 Argus 静态检测公平对照)。
-  - 已知:OpenAPI spec 在 /openapi.json;源码在 targets/VAmPI(api_views/ 是路由层)。
+  - 已知:OpenAPI spec 在 /openapi.json;源码在 evaluation/targets/VAmPI(api_views/ 是路由层)。
 
 # 推理模型慢,降低并发避免 rate limit(可选,按需启用):
 # pipeline:
