@@ -1,12 +1,12 @@
 # Argus vs Shannon 对比扩展状态
 
-**更新日期**: 2026-07-23
+**更新日期**: 2026-07-27
 
 ## 已完成
 
 - 评测 runner 已增加 LLM 截断检测：`finish_reason=length` 会保留审计并让 workspace 失败，
   不再静默折算为空 findings；business-flow 与 baseline 支持分批上下文，避免单次请求耗尽
-  推理模型预算。当前本地门禁为 210 passed、1 skipped，mypy/Ruff 全绿。
+  推理模型预算。
 - 分批 VAmPI business-logic 验证已完成：5 条 finding，TP=3、FP=2、FN=1，Recall=0.750、
   Precision=0.600。该结果是单靶场诊断，不替换正式 Shannon 对照结果。
 
@@ -20,7 +20,8 @@
 - crAPI workshop Argus：26 条 finding，comparison scope 6/7，Detection Recall=0.857；community Argus：7 条 finding，comparison scope 2/2，Detection Recall=1.000。
 - 矩阵支持单侧产物展示：整体仍标为 `unavailable`，但已存在一侧的 recall 会显示，缺失侧保持 `N/A`，不会把单侧结果误读为双侧对照。
 - authz 分析器 prompt 已补充 mass-assignment / server-authoritative 字段规则；现有正式 crAPI workspace 未静默重跑，待获得外发源码授权后再以新契约复测并替换结果。
-- 最近一次完整门禁：206 passed、1 skipped；mypy strict、Ruff lint、Ruff format、git diff check 均通过。
+- 2026-07-27 最近一次完整门禁：210 passed、1 skipped；mypy strict、Ruff lint、
+  Ruff format、git diff check 均通过。
 
 ## 多靶场扩展
 

@@ -21,3 +21,8 @@ Run the evaluation matrix:
 ```bash
 uv run python evaluation/scripts/run_eval.py
 ```
+
+The matrix may send benchmark source context to the configured external LLM.
+Do not run it without authorization for that disclosure. Missing external arms
+and rerun prerequisites are tracked in
+[`../docs/comparisons/EXPANSION-STATUS.md`](../docs/comparisons/EXPANSION-STATUS.md).

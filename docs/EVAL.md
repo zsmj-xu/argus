@@ -121,5 +121,7 @@ evaluation/targets/crAPI/services/workshop
 evaluation/targets/crAPI/services/community
 ```
 
-T16 will consume these JSON files to calculate recall/precision. T17 will add the
-strictly isolated no-graph baseline, and T18 will run the complete comparison matrix.
+The scoring library, strictly isolated no-graph baseline, and comparison-matrix
+runner are implemented. Current results, missing arms, and rerun prerequisites
+are recorded in
+[`comparisons/EXPANSION-STATUS.md`](comparisons/EXPANSION-STATUS.md).
