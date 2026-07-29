@@ -20,11 +20,14 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from argus.analyzers.base import AnalyzerBase
 from argus.contracts import Phase
+from argus.llm.client import HEAVY_MAX_TOKENS
+from argus.progress import emit_progress
 
 if TYPE_CHECKING:
     from argus.contracts import AnalysisContext, AnalyzerResult, GraphHandle, SourceAccess
@@ -83,6 +86,20 @@ class BusinessFlowAnalyzer(AnalyzerBase):
     phase = Phase.ENRICHMENT
     requires: list[str] = []
 
+    @staticmethod
+    def _progress(ctx: AnalysisContext, *, event: str, message: str, **details: Any) -> None:
+        runs_root = getattr(ctx["llm"], "runs_root", None)
+        if not isinstance(runs_root, str):
+            return
+        emit_progress(
+            ctx["workspace"],
+            event=event,
+            message=message,
+            runs_root=runs_root,
+            analyzer="business-flow",
+            **details,
+        )
+
     def run(self, ctx: AnalysisContext) -> AnalyzerResult:
         graph = ctx["graph"]
 
@@ -90,14 +107,12 @@ class BusinessFlowAnalyzer(AnalyzerBase):
         skeleton_nodes = _collect_skeleton_nodes(graph)
         call_edges = _collect_call_edges(graph, skeleton_nodes)
         settings = ctx["config"].get(self.name, {})
-        max_tokens = settings.get("max_tokens", 8192) if isinstance(settings, dict) else 8192
+        max_tokens = settings.get("max_tokens", HEAVY_MAX_TOKENS) if isinstance(settings, dict) else HEAVY_MAX_TOKENS
         if not isinstance(max_tokens, int) or isinstance(max_tokens, bool) or max_tokens <= 0:
-            max_tokens = 8192
-        batch_size = (
-            settings.get("batch_size", len(skeleton_nodes)) if isinstance(settings, dict) else len(skeleton_nodes)
-        )
+            max_tokens = HEAVY_MAX_TOKENS
+        batch_size = settings.get("batch_size", 8) if isinstance(settings, dict) else 8
         if not isinstance(batch_size, int) or isinstance(batch_size, bool) or batch_size <= 0:
-            batch_size = len(skeleton_nodes) or 1
+            batch_size = 8
         strict_outputs = ctx["config"].get("strict_outputs") is True
         merged: dict[str, Any] = {section: [] for section in _ENRICHMENT_SECTIONS}
 
@@ -105,7 +120,25 @@ class BusinessFlowAnalyzer(AnalyzerBase):
         # independently, then merged so a single response cannot consume the whole
         # provider reasoning budget before producing structured JSON.
         batches = [skeleton_nodes[offset : offset + batch_size] for offset in range(0, len(skeleton_nodes), batch_size)]
+        self._progress(
+            ctx,
+            event="analyzer_plan",
+            message=f"业务流富化将分析 {len(skeleton_nodes)} 个函数/方法，共 {len(batches)} 个批次",
+            node_count=len(skeleton_nodes),
+            edge_count=len(call_edges),
+            batch_size=batch_size,
+            batch_count=len(batches),
+        )
         for batch_index, batch_nodes in enumerate(batches, start=1):
+            batch_started = time.monotonic()
+            self._progress(
+                ctx,
+                event="batch_started",
+                message=f"开始业务流批次 {batch_index}/{len(batches)}，包含 {len(batch_nodes)} 个节点",
+                batch_index=batch_index,
+                batch_count=len(batches),
+                node_count=len(batch_nodes),
+            )
             batch_ids = {str(node.get("id")) for node in batch_nodes if isinstance(node.get("id"), str)}
             batch_edges = [edge for edge in call_edges if edge.get("from") in batch_ids and edge.get("to") in batch_ids]
             context_text = _build_context(batch_nodes, ctx["source"])
@@ -116,10 +149,30 @@ class BusinessFlowAnalyzer(AnalyzerBase):
 
             parsed = _parse_json_object(raw)
             if strict_outputs and parsed is None:
+                self._progress(
+                    ctx,
+                    event="batch_failed",
+                    message=f"业务流批次 {batch_index}/{len(batches)} 返回了无效 JSON",
+                    level="error",
+                    batch_index=batch_index,
+                    batch_count=len(batches),
+                    response_chars=len(raw),
+                )
                 raise BusinessFlowOutputError("business-flow analyzer returned invalid JSON")
             if parsed is not None and len(batches) > 1:
                 _namespace_batch_ids(parsed, batch_index)
             _merge_enrichment(merged, _assemble_enrichment(parsed, batch_nodes))
+            elapsed = round(time.monotonic() - batch_started, 1)
+            self._progress(
+                ctx,
+                event="batch_completed",
+                message=f"业务流批次 {batch_index}/{len(batches)} 完成，耗时 {elapsed:.1f} 秒",
+                level="success" if parsed is not None else "warning",
+                batch_index=batch_index,
+                batch_count=len(batches),
+                elapsed_seconds=elapsed,
+                parsed=parsed is not None,
+            )
 
         if strict_outputs and skeleton_nodes and not (merged["endpoints"] or merged["handlers"]):
             raise BusinessFlowOutputError("business-flow analyzer returned no usable endpoints or handlers")

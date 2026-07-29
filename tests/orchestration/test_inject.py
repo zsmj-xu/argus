@@ -5,7 +5,7 @@
 用一个记录 ctx["config"] 快照的 mock 分析器证明这一点。
 
 直接测底层 `_advance`(带注入参数)对 state.config 的效果:_advance 是 resume/continue
-共用的推进逻辑,continue 传注入、resume 不传。SqliteSaver 落在 tmp_path,fixture mini.db
+共用的推进逻辑,两种操作都能在推进前注入调整。SqliteSaver 落在 tmp_path,fixture mini.db
 绕过真实建图,不联网。
 """
 

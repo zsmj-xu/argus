@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from argus.analyzers.base import AnalyzerBase
 from argus.contracts import Confidence, GraphHandle, Phase, Severity, SourceMode
+from argus.llm.client import DEFAULT_MAX_TOKENS
 from argus.source import strip_source
 
 if TYPE_CHECKING:
@@ -52,9 +53,11 @@ class BaselineAnalyzer(AnalyzerBase):
     def run(self, ctx: AnalysisContext) -> AnalyzerResult:
         files, anchors = self._validate_isolation(ctx)
         settings = ctx["config"].get(self.name, {})
-        max_tokens = settings.get("max_tokens", 8192) if isinstance(settings, dict) else 8192
+        max_tokens = (
+            settings.get("max_tokens", DEFAULT_MAX_TOKENS) if isinstance(settings, dict) else DEFAULT_MAX_TOKENS
+        )
         if not isinstance(max_tokens, int) or isinstance(max_tokens, bool) or max_tokens <= 0:
-            max_tokens = 8192
+            max_tokens = DEFAULT_MAX_TOKENS
         batch_size = settings.get("batch_size", len(files)) if isinstance(settings, dict) else len(files)
         if not isinstance(batch_size, int) or isinstance(batch_size, bool) or batch_size <= 0:
             batch_size = len(files) or 1

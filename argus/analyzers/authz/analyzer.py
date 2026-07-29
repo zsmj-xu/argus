@@ -23,6 +23,7 @@ from argus.contracts import (
     Phase,
     Severity,
 )
+from argus.llm.client import DEFAULT_MAX_TOKENS
 
 logger = logging.getLogger(__name__)
 
@@ -350,7 +351,10 @@ class AuthzAnalyzer(AnalyzerBase):
 
     @staticmethod
     def _max_tokens(config: dict[str, Any]) -> int:
-        return AuthzAnalyzer._positive_int(AuthzAnalyzer._authz_config(config).get("max_tokens"), 8192)
+        return AuthzAnalyzer._positive_int(
+            AuthzAnalyzer._authz_config(config).get("max_tokens"),
+            DEFAULT_MAX_TOKENS,
+        )
 
     @staticmethod
     def _in_scope(file_path: str, *, focus: Any, avoid: Any) -> bool:

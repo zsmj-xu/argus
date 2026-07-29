@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import time
 from typing import Any
 
 from langgraph.graph import END, START, StateGraph
@@ -41,6 +42,7 @@ from argus.orchestration.checkpoints import (
     review_enrichment,
     review_findings,
 )
+from argus.progress import emit_progress
 from argus.reporting.report import render_report
 from argus.source import strip_source
 
@@ -181,10 +183,27 @@ def _run_phase(
     """
     selected = _selected_names(state, phase)
     to_run = [analyzers[name] for name in selected if name in analyzers and analyzers[name].phase is phase]
+    runs_root = _runs_root_from_state(state)
+    emit_progress(
+        state["workspace"],
+        event="phase_started",
+        message=f"开始执行 {node_name} 节点，共 {len(to_run)} 个分析器",
+        runs_root=runs_root,
+        node=node_name,
+        analyzers=[analyzer.name for analyzer in to_run],
+    )
 
     if not to_run:
         # 无分析器:产物保持 state 现值(enrichment 通常 {},vuln 通常 []),仍确定性落盘。
         _persist_phase_artifact(state, phase, dict(state["enriched"]), list(state["findings"]))
+        emit_progress(
+            state["workspace"],
+            event="phase_completed",
+            message=f"{node_name} 节点完成，没有需要运行的分析器",
+            runs_root=runs_root,
+            level="success",
+            node=node_name,
+        )
         return {"completed_nodes": [*state["completed_nodes"], node_name]}
 
     graph: GraphHandle = CodegraphHandle(state["graph_db_path"])
@@ -194,11 +213,57 @@ def _run_phase(
     new_findings: list[Finding] = list(state["findings"])
 
     for analyzer in to_run:
-        result = analyzer.run(ctx)
+        analyzer_started = time.monotonic()
+        emit_progress(
+            state["workspace"],
+            event="analyzer_started",
+            message=f"正在运行分析器 {analyzer.name}",
+            runs_root=runs_root,
+            node=node_name,
+            analyzer=analyzer.name,
+        )
+        try:
+            result = analyzer.run(ctx)
+        except Exception as exc:
+            elapsed = round(time.monotonic() - analyzer_started, 1)
+            emit_progress(
+                state["workspace"],
+                event="analyzer_failed",
+                message=f"分析器 {analyzer.name} 运行失败：{type(exc).__name__}: {exc}",
+                runs_root=runs_root,
+                level="error",
+                node=node_name,
+                analyzer=analyzer.name,
+                elapsed_seconds=elapsed,
+                error_type=type(exc).__name__,
+            )
+            raise
+        elapsed = round(time.monotonic() - analyzer_started, 1)
         merged_enriched.update(result.get("enrichment", {}))
-        new_findings.extend(result.get("findings", []))
+        analyzer_findings = result.get("findings", [])
+        new_findings.extend(analyzer_findings)
+        emit_progress(
+            state["workspace"],
+            event="analyzer_completed",
+            message=f"分析器 {analyzer.name} 完成，耗时 {elapsed:.1f} 秒",
+            runs_root=runs_root,
+            level="success",
+            node=node_name,
+            analyzer=analyzer.name,
+            elapsed_seconds=elapsed,
+            finding_count=len(analyzer_findings),
+        )
 
     _persist_phase_artifact(state, phase, merged_enriched, new_findings)
+    emit_progress(
+        state["workspace"],
+        event="phase_completed",
+        message=f"{node_name} 节点完成",
+        runs_root=runs_root,
+        level="success",
+        node=node_name,
+        finding_count=len(new_findings),
+    )
 
     return {
         "enriched": merged_enriched,
@@ -209,11 +274,45 @@ def _run_phase(
 
 def build_graph_node(state: ArgusState) -> dict[str, Any]:
     """建图节点:db 已存在则跳过(接受注入的 fixture db),否则调 codegraph build_graph。"""
+    runs_root = _runs_root_from_state(state)
+    started = time.monotonic()
+    emit_progress(
+        state["workspace"],
+        event="node_started",
+        message="开始构建代码图",
+        runs_root=runs_root,
+        node=NODE_BUILD_GRAPH,
+    )
     db_path = state["graph_db_path"]
-    if db_path and os.path.exists(db_path):
-        resolved = db_path
-    else:
-        resolved = build_graph(state["repo_path"])
+    try:
+        if db_path and os.path.exists(db_path):
+            resolved = db_path
+            reused = True
+        else:
+            resolved = build_graph(state["repo_path"])
+            reused = False
+    except Exception as exc:
+        emit_progress(
+            state["workspace"],
+            event="node_failed",
+            message=f"代码图构建失败：{type(exc).__name__}: {exc}",
+            runs_root=runs_root,
+            level="error",
+            node=NODE_BUILD_GRAPH,
+            error_type=type(exc).__name__,
+        )
+        raise
+    elapsed = round(time.monotonic() - started, 1)
+    emit_progress(
+        state["workspace"],
+        event="node_completed",
+        message=f"代码图{'复用' if reused else '构建'}完成，耗时 {elapsed:.1f} 秒",
+        runs_root=runs_root,
+        level="success",
+        node=NODE_BUILD_GRAPH,
+        elapsed_seconds=elapsed,
+        reused=reused,
+    )
 
     return {
         "graph_db_path": resolved,
@@ -223,12 +322,30 @@ def build_graph_node(state: ArgusState) -> dict[str, Any]:
 
 def report_node(state: ArgusState) -> dict[str, Any]:
     """报告节点:把 findings 确定性渲染为 markdown 并写到 runs/<ws>/report.md。"""
+    runs_root = _runs_root_from_state(state)
+    emit_progress(
+        state["workspace"],
+        event="node_started",
+        message="开始生成安全报告",
+        runs_root=runs_root,
+        node=NODE_REPORT,
+        finding_count=len(state["findings"]),
+    )
     report_path = state["report_path"]
     os.makedirs(os.path.dirname(report_path), exist_ok=True)
 
     markdown = render_report(state["findings"], state)
     with open(report_path, "w", encoding="utf-8") as handle:
         handle.write(markdown)
+    emit_progress(
+        state["workspace"],
+        event="node_completed",
+        message="安全报告生成完成",
+        runs_root=runs_root,
+        level="success",
+        node=NODE_REPORT,
+        finding_count=len(state["findings"]),
+    )
 
     return {"completed_nodes": [*state["completed_nodes"], NODE_REPORT]}
 

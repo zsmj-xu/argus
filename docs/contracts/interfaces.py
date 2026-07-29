@@ -123,7 +123,7 @@ class SourceAccess(Protocol):
 class LLMClient(Protocol):
     """LLM 客户端(带审计包装)。分析器通过它调模型,调用会被审计记录。"""
 
-    def complete(self, *, system: str, prompt: str, max_tokens: int = 8192) -> str:
+    def complete(self, *, system: str, prompt: str, max_tokens: int = 32768) -> str:
         """单轮补全,返回文本。"""
         ...
 

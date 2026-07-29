@@ -17,6 +17,7 @@ from argus.contracts import (
     Phase,
     Severity,
 )
+from argus.llm.client import DEFAULT_MAX_TOKENS
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +61,7 @@ class ShannonAnalyzerBase(AnalyzerBase):
             response = ctx["llm"].complete(
                 system=system,
                 prompt=self._build_prompt(ctx, batch, batch_index, len(batches)),
-                max_tokens=self._positive_int(settings.get("max_tokens"), 8192),
+                max_tokens=self._positive_int(settings.get("max_tokens"), DEFAULT_MAX_TOKENS),
             )
             payload = self._parse_response(response)
             if payload is None:

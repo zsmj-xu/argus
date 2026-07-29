@@ -1,0 +1,844 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Argus AI 白盒源代码扫描器的可视化操作台原型"
+    />
+    <title>Argus Console</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">跳到主要内容</a>
+
+    <svg class="svg-defs" aria-hidden="true">
+      <symbol id="i-argus" viewBox="0 0 24 24">
+        <path d="M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6Z" />
+        <circle cx="12" cy="12" r="2.75" />
+        <path d="M12 2v2M12 20v2M2 12h2M20 12h2" />
+      </symbol>
+      <symbol id="i-grid" viewBox="0 0 24 24">
+        <rect x="3" y="3" width="7" height="7" rx="1.5" />
+        <rect x="14" y="3" width="7" height="7" rx="1.5" />
+        <rect x="3" y="14" width="7" height="7" rx="1.5" />
+        <rect x="14" y="14" width="7" height="7" rx="1.5" />
+      </symbol>
+      <symbol id="i-scan" viewBox="0 0 24 24">
+        <path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3" />
+        <path d="M8 12h8M12 8v8" />
+      </symbol>
+      <symbol id="i-review" viewBox="0 0 24 24">
+        <path d="M8 4h8M9 2h6v4H9z" />
+        <path d="M7 4H5a2 2 0 0 0-2 2v14h18V6a2 2 0 0 0-2-2h-2" />
+        <path d="m8 13 2.5 2.5L16 10" />
+      </symbol>
+      <symbol id="i-shield" viewBox="0 0 24 24">
+        <path d="M12 3 4.5 6v5.5c0 4.6 3.2 7.9 7.5 9.5 4.3-1.6 7.5-4.9 7.5-9.5V6L12 3Z" />
+        <path d="M12 8v5M12 16h.01" />
+      </symbol>
+      <symbol id="i-report" viewBox="0 0 24 24">
+        <path d="M6 3h8l4 4v14H6z" />
+        <path d="M14 3v5h4M9 12h6M9 16h6" />
+      </symbol>
+      <symbol id="i-settings" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="3" />
+        <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z" />
+      </symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></symbol>
+      <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></symbol>
+      <symbol id="i-sun" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="4" />
+        <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+      </symbol>
+      <symbol id="i-search" viewBox="0 0 24 24">
+        <circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" />
+      </symbol>
+      <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></symbol>
+      <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M14 7l5 5-5 5" /></symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6" /></symbol>
+      <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18" /></symbol>
+      <symbol id="i-filter" viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4" /></symbol>
+      <symbol id="i-code" viewBox="0 0 24 24"><path d="m9 18-6-6 6-6M15 6l6 6-6 6" /></symbol>
+      <symbol id="i-branch" viewBox="0 0 24 24">
+        <circle cx="6" cy="5" r="2" /><circle cx="18" cy="6" r="2" /><circle cx="6" cy="19" r="2" />
+        <path d="M6 7v10M8 14c6 0 8-2 8-6" />
+      </symbol>
+      <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 13v7H4V6h7" /></symbol>
+    </svg>
+
+    <div class="app-shell">
+      <aside class="sidebar" id="sidebar" aria-label="主导航">
+        <div class="brand">
+          <span class="brand-mark"><svg><use href="#i-argus"></use></svg></span>
+          <span>
+            <strong>ARGUS</strong>
+            <small>SECURITY CONSOLE</small>
+          </span>
+        </div>
+
+        <nav class="main-nav">
+          <p class="nav-label">工作台</p>
+          <a class="nav-item active" href="#overview" data-view-target="overview" aria-current="page">
+            <svg><use href="#i-grid"></use></svg><span>总览</span>
+          </a>
+          <a class="nav-item" href="#scans" data-view-target="scans">
+            <svg><use href="#i-scan"></use></svg><span>扫描任务</span>
+            <span class="nav-count" id="scan-nav-count">—</span>
+          </a>
+          <a class="nav-item" href="#reviews" data-view-target="reviews">
+            <svg><use href="#i-review"></use></svg><span>审阅队列</span>
+            <span class="nav-count attention" id="review-nav-count">—</span>
+          </a>
+          <a class="nav-item" href="#findings" data-view-target="findings">
+            <svg><use href="#i-shield"></use></svg><span>漏洞发现</span>
+          </a>
+          <a class="nav-item" href="#reports" data-view-target="reports">
+            <svg><use href="#i-report"></use></svg><span>报告</span>
+          </a>
+        </nav>
+
+        <div class="sidebar-spacer"></div>
+
+          <div class="environment-card" id="engine-status">
+            <div class="environment-row">
+              <span class="status-dot success"></span>
+              <span>本地引擎</span>
+              <span class="mono" id="engine-state">连接中</span>
+          </div>
+          <div class="environment-row muted">
+            <span>codegraph</span>
+            <span class="mono">v0.12.1</span>
+          </div>
+        </div>
+
+        <a class="nav-item" href="#settings" data-view-target="settings">
+          <svg><use href="#i-settings"></use></svg><span>设置</span>
+        </a>
+        <div class="profile">
+          <span class="avatar">HT</span>
+          <span><strong>本地工作区</strong><small>安全审阅者</small></span>
+        </div>
+      </aside>
+
+      <div class="sidebar-scrim" id="sidebar-scrim" hidden></div>
+
+      <div class="workspace">
+        <header class="topbar">
+          <button class="icon-button mobile-only" id="menu-button" aria-label="打开主导航" aria-expanded="false">
+            <svg><use href="#i-menu"></use></svg>
+          </button>
+          <div class="repo-context">
+            <span class="repo-icon"><svg><use href="#i-branch"></use></svg></span>
+            <label class="workspace-picker">
+              <small>当前工作区</small>
+              <select id="workspace-select" aria-label="切换当前工作区">
+                <option>正在读取…</option>
+              </select>
+            </label>
+          </div>
+          <div class="topbar-actions">
+            <button class="icon-button" id="theme-toggle" aria-label="切换浅色主题">
+              <svg><use href="#i-sun"></use></svg>
+            </button>
+            <button class="button primary" data-open-scan>
+              <svg><use href="#i-plus"></use></svg><span>新建扫描</span>
+            </button>
+          </div>
+        </header>
+
+        <main id="main-content">
+          <div class="app-view active" data-view="overview">
+          <section class="page-heading">
+            <div>
+              <p class="eyebrow">安全态势 / 2026-07-27</p>
+              <h1 id="page-heading-title">Argus 安全工作台</h1>
+              <p id="page-status-description">正在读取本地扫描工作区。</p>
+            </div>
+            <div class="heading-actions">
+              <button class="button secondary" id="export-report"><svg><use href="#i-report"></use></svg>导出报告</button>
+              <button class="button primary" id="review-now"><svg><use href="#i-review"></use></svg>立即审阅</button>
+            </div>
+          </section>
+
+          <section class="active-run" aria-labelledby="active-run-title">
+            <div class="active-run-top">
+              <div class="run-identity">
+                <span class="run-icon"><svg><use href="#i-scan"></use></svg></span>
+                <div>
+                  <div class="title-line">
+                    <h2 id="active-run-title">正在读取工作区…</h2>
+                    <span class="status-chip warning" id="active-run-status"><span class="status-dot"></span>连接中</span>
+                  </div>
+                  <p id="active-run-description"><span class="mono">runs/</span> · 正在读取本地状态</p>
+                </div>
+              </div>
+              <button class="button secondary compact" id="view-task-button">查看任务 <svg><use href="#i-arrow"></use></svg></button>
+            </div>
+
+            <ol class="pipeline" aria-label="扫描进度">
+              <li class="complete">
+                <span class="stage-marker"><svg><use href="#i-check"></use></svg></span>
+                <span><strong>代码图</strong><small>1m 24s</small></span>
+              </li>
+              <li class="complete">
+                <span class="stage-marker"><svg><use href="#i-check"></use></svg></span>
+                <span><strong>语义富化</strong><small>6m 08s</small></span>
+              </li>
+              <li class="complete">
+                <span class="stage-marker"><svg><use href="#i-check"></use></svg></span>
+                <span><strong>漏洞分析</strong><small>11m 10s</small></span>
+              </li>
+              <li class="current">
+                <span class="stage-marker">4</span>
+                <span><strong>人工审阅</strong><small>需要操作</small></span>
+              </li>
+              <li>
+                <span class="stage-marker">5</span>
+                <span><strong>生成报告</strong><small>尚未开始</small></span>
+              </li>
+            </ol>
+          </section>
+
+          <section class="metrics" aria-label="扫描指标">
+            <article class="metric-card">
+              <div class="metric-label"><span>全部发现</span><svg><use href="#i-shield"></use></svg></div>
+              <div class="metric-value" id="metric-total">—</div>
+              <p><span class="trend neutral">当前工作区</span> <span id="metric-classes">—</span> 个漏洞类别</p>
+            </article>
+            <article class="metric-card critical-card">
+              <div class="metric-label"><span>严重风险</span><span class="severity-mark critical"></span></div>
+              <div class="metric-value" id="metric-critical">—</div>
+              <p><span class="trend neutral">需优先确认</span> 证据与影响</p>
+            </article>
+            <article class="metric-card">
+              <div class="metric-label"><span>高危风险</span><span class="severity-mark high"></span></div>
+              <div class="metric-value" id="metric-high">—</div>
+              <p><span class="trend neutral">建议本轮处理</span></p>
+            </article>
+            <article class="metric-card">
+              <div class="metric-label"><span>工作区数量</span><svg><use href="#i-clock"></use></svg></div>
+              <div class="metric-value mono" id="metric-workspaces">—</div>
+              <p><span class="trend neutral">本地记录</span> 扫描工作区</p>
+            </article>
+          </section>
+
+          <div class="dashboard-grid">
+            <section class="panel risk-panel" aria-labelledby="risk-title">
+              <div class="panel-header">
+                <div>
+                  <h2 id="risk-title">风险分布</h2>
+                  <p>按漏洞类型统计已验证发现</p>
+                </div>
+                <button class="text-button" data-view-target="findings">查看全部 <svg><use href="#i-arrow"></use></svg></button>
+              </div>
+              <div class="risk-summary" id="risk-summary" role="img" aria-label="正在读取风险分布">
+                <div class="risk-total">
+                  <span class="eyebrow">风险集中度</span>
+                  <strong id="risk-concentration">—</strong>
+                  <small id="risk-concentration-label">正在计算</small>
+                </div>
+                <div class="risk-bars" id="risk-bars">
+                  <div class="bar-row">
+                    <span>授权控制</span>
+                    <div class="bar-track"><span style="--bar-width: 40%"></span></div>
+                    <strong>4</strong>
+                  </div>
+                  <div class="bar-row">
+                    <span>身份认证</span>
+                    <div class="bar-track"><span style="--bar-width: 20%"></span></div>
+                    <strong>2</strong>
+                  </div>
+                  <div class="bar-row">
+                    <span>注入攻击</span>
+                    <div class="bar-track"><span style="--bar-width: 20%"></span></div>
+                    <strong>2</strong>
+                  </div>
+                  <div class="bar-row">
+                    <span>跨站脚本</span>
+                    <div class="bar-track"><span style="--bar-width: 10%"></span></div>
+                    <strong>1</strong>
+                  </div>
+                  <div class="bar-row">
+                    <span>业务逻辑</span>
+                    <div class="bar-track"><span style="--bar-width: 10%"></span></div>
+                    <strong>1</strong>
+                  </div>
+                </div>
+              </div>
+              <div class="chart-legend" id="chart-legend" aria-hidden="true">
+                <span><i class="severity-mark critical"></i>严重 —</span>
+                <span><i class="severity-mark high"></i>高危 —</span>
+                <span><i class="severity-mark medium"></i>中危 —</span>
+              </div>
+            </section>
+
+            <section class="panel review-panel" id="review-panel" aria-labelledby="review-title">
+              <div class="panel-header">
+                <div>
+                  <h2 id="review-title">待办审阅</h2>
+                  <p id="review-summary">正在读取运行状态</p>
+                </div>
+                <span class="nav-count attention" id="review-count">—</span>
+              </div>
+              <div class="review-list">
+                <button class="review-item" id="review-primary-action" data-open-finding="authz">
+                  <span class="review-indicator critical"></span>
+                  <span class="review-copy">
+                    <strong id="review-primary-title">确认关键发现</strong>
+                    <small id="review-findings-summary">正在读取发现</small>
+                  </span>
+                  <span class="review-meta">刚刚<svg><use href="#i-chevron"></use></svg></span>
+                </button>
+                <button class="review-item" id="review-artifacts-action">
+                  <span class="review-indicator info"></span>
+                  <span class="review-copy">
+                    <strong id="review-secondary-title">查看工作区产物</strong>
+                    <small id="review-artifacts-summary">正在读取可用产物</small>
+                  </span>
+                  <span class="review-meta">18 分钟前<svg><use href="#i-chevron"></use></svg></span>
+                </button>
+              </div>
+              <button class="button primary full" id="approve-review" disabled>
+                <svg><use href="#i-check"></use></svg>批准并生成报告
+              </button>
+            </section>
+          </div>
+
+          <section class="panel findings-panel" aria-labelledby="findings-title">
+            <div class="panel-header findings-header">
+              <div>
+                <h2 id="findings-title">优先处理</h2>
+                <p>按严重性与置信度排序</p>
+              </div>
+              <div class="table-actions">
+                <label class="search-field">
+                  <span class="sr-only">搜索漏洞</span>
+                  <svg><use href="#i-search"></use></svg>
+                  <input id="finding-search" type="search" placeholder="搜索标题或文件…" />
+                </label>
+                <label class="compact-select">
+                  <span class="sr-only">按严重性筛选</span>
+                  <svg><use href="#i-filter"></use></svg>
+                  <select id="overview-severity-filter" aria-label="按严重性筛选">
+                    <option value="all">全部级别</option>
+                    <option value="critical">严重</option>
+                    <option value="high">高危</option>
+                    <option value="medium">中危</option>
+                    <option value="low">低危</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">严重性</th>
+                    <th scope="col">发现</th>
+                    <th scope="col">类别</th>
+                    <th scope="col">位置</th>
+                    <th scope="col">置信度</th>
+                    <th scope="col"><span class="sr-only">操作</span></th>
+                  </tr>
+                </thead>
+                <tbody id="findings-body">
+                  <tr tabindex="0" data-finding="auth">
+                    <td><span class="severity-chip critical">严重</span></td>
+                    <td><strong>可预测认证令牌允许账户冒充</strong><small>令牌只由用户 ID 派生，缺少签名与随机性</small></td>
+                    <td><span class="class-chip">AUTH</span></td>
+                    <td><span class="file-link mono">api/users.py:42</span></td>
+                    <td><span class="confidence"><i></i><i></i><i></i>高</span></td>
+                    <td><button class="row-action" aria-label="查看可预测认证令牌详情"><svg><use href="#i-chevron"></use></svg></button></td>
+                  </tr>
+                  <tr tabindex="0" data-finding="authz">
+                    <td><span class="severity-chip critical">严重</span></td>
+                    <td><strong>注册时可自行赋予管理员角色</strong><small>未经认证的用户可以创建管理员账户</small></td>
+                    <td><span class="class-chip">AUTHZ</span></td>
+                    <td><span class="file-link mono">api/users.py:28</span></td>
+                    <td><span class="confidence"><i></i><i></i><i></i>高</span></td>
+                    <td><button class="row-action" aria-label="查看管理员角色详情"><svg><use href="#i-chevron"></use></svg></button></td>
+                  </tr>
+                  <tr tabindex="0" data-finding="xss">
+                    <td><span class="severity-chip high">高危</span></td>
+                    <td><strong>支持预览接口存在反射型 XSS</strong><small>用户输入未经编码直接写入 HTML 响应</small></td>
+                    <td><span class="class-chip">XSS</span></td>
+                    <td><span class="file-link mono">api/support.py:19</span></td>
+                    <td><span class="confidence"><i></i><i></i><i></i>高</span></td>
+                    <td><button class="row-action" aria-label="查看反射型 XSS 详情"><svg><use href="#i-chevron"></use></svg></button></td>
+                  </tr>
+                  <tr tabindex="0" data-finding="password">
+                    <td><span class="severity-chip high">高危</span></td>
+                    <td><strong>密码以明文形式存储</strong><small>数据库泄露后所有凭据可被直接使用</small></td>
+                    <td><span class="class-chip">AUTH</span></td>
+                    <td><span class="file-link mono">models.py:69</span></td>
+                    <td><span class="confidence"><i></i><i></i><i></i>高</span></td>
+                    <td><button class="row-action" aria-label="查看明文密码详情"><svg><use href="#i-chevron"></use></svg></button></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="panel-footer">
+              <span id="findings-count">显示 4 / 10 条发现</span>
+              <button class="text-button" data-view-target="findings">打开漏洞中心 <svg><use href="#i-arrow"></use></svg></button>
+            </div>
+          </section>
+          </div>
+
+          <section class="app-view" data-view="scans" hidden aria-labelledby="scans-page-title">
+            <div class="page-heading view-heading">
+              <div>
+                <p class="eyebrow">运行管理</p>
+                <h1 id="scans-page-title">扫描任务</h1>
+                <p>查看所有工作区、运行状态、产物和后台日志。</p>
+              </div>
+              <div class="heading-actions">
+                <button class="button secondary" id="refresh-scans"><svg><use href="#i-clock"></use></svg>刷新状态</button>
+                <button class="button primary" data-open-scan><svg><use href="#i-plus"></use></svg>新建扫描</button>
+              </div>
+            </div>
+            <section class="panel">
+              <div class="table-wrap">
+                <table class="workspace-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">工作区</th>
+                      <th scope="col">状态</th>
+                      <th scope="col">发现</th>
+                      <th scope="col">可用产物</th>
+                      <th scope="col">最后更新</th>
+                      <th scope="col">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody id="scans-body"></tbody>
+                </table>
+              </div>
+            </section>
+          </section>
+
+          <section class="app-view" data-view="reviews" hidden aria-labelledby="reviews-page-title">
+            <div class="page-heading view-heading">
+              <div>
+                <p class="eyebrow">Human in the loop</p>
+                <h1 id="reviews-page-title">审阅队列</h1>
+                <p>处理人工检查点，并恢复非预期中断的扫描。</p>
+              </div>
+            </div>
+            <div class="review-queue" id="review-queue"></div>
+          </section>
+
+          <section class="app-view" data-view="findings" hidden aria-labelledby="findings-page-title">
+            <div class="page-heading view-heading">
+              <div>
+                <p class="eyebrow">跨工作区检索</p>
+                <h1 id="findings-page-title">漏洞中心</h1>
+                <p>集中检索、确认和标记所有扫描发现。</p>
+              </div>
+            </div>
+            <section class="panel">
+              <div class="panel-header findings-header">
+                <div>
+                  <h2>全部发现</h2>
+                  <p id="all-findings-count">正在读取…</p>
+                </div>
+                <div class="table-actions findings-filters">
+                  <label class="search-field">
+                    <span class="sr-only">搜索全部漏洞</span>
+                    <svg><use href="#i-search"></use></svg>
+                    <input id="all-findings-search" type="search" placeholder="搜索标题、文件或工作区…" />
+                  </label>
+                  <label class="compact-select">
+                    <span class="sr-only">筛选严重性</span>
+                    <select id="all-severity-filter" aria-label="筛选严重性">
+                      <option value="all">全部级别</option>
+                      <option value="critical">严重</option>
+                      <option value="high">高危</option>
+                      <option value="medium">中危</option>
+                      <option value="low">低危</option>
+                    </select>
+                  </label>
+                  <label class="compact-select">
+                    <span class="sr-only">筛选工作区</span>
+                    <select id="all-workspace-filter" aria-label="筛选工作区">
+                      <option value="all">全部工作区</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th scope="col">严重性</th>
+                      <th scope="col">发现</th>
+                      <th scope="col">工作区</th>
+                      <th scope="col">位置</th>
+                      <th scope="col">审阅状态</th>
+                      <th scope="col"><span class="sr-only">操作</span></th>
+                    </tr>
+                  </thead>
+                  <tbody id="all-findings-body"></tbody>
+                </table>
+              </div>
+            </section>
+          </section>
+
+          <section class="app-view" data-view="reports" hidden aria-labelledby="reports-page-title">
+            <div class="page-heading view-heading">
+              <div>
+                <p class="eyebrow">扫描交付物</p>
+                <h1 id="reports-page-title">报告中心</h1>
+                <p>预览或下载已经生成的 Markdown 安全报告。</p>
+              </div>
+            </div>
+            <div class="report-grid" id="reports-list"></div>
+          </section>
+
+          <section class="app-view" data-view="settings" hidden aria-labelledby="settings-page-title">
+            <div class="page-heading view-heading">
+              <div>
+                <p class="eyebrow">只读环境检查</p>
+                <h1 id="settings-page-title">设置与运行环境</h1>
+                <p>确认本地路径、LLM 配置状态和已发现的分析器。</p>
+              </div>
+            </div>
+            <div class="settings-grid">
+              <section class="panel settings-card">
+                <div class="panel-header"><div><h2>LLM 连接</h2><p>仅显示配置状态，不暴露密钥</p></div></div>
+                <dl id="llm-settings"></dl>
+              </section>
+              <section class="panel settings-card">
+                <div class="panel-header"><div><h2>本地服务</h2><p>Web Console 安全边界</p></div></div>
+                <dl id="server-settings"></dl>
+              </section>
+              <section class="panel settings-card settings-wide">
+                <div class="panel-header"><div><h2>分析器注册表</h2><p>启动时自动发现</p></div></div>
+                <div class="analyzer-registry" id="analyzer-registry"></div>
+              </section>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden>
+      <span class="toast-icon"><svg><use href="#i-check"></use></svg></span>
+      <span><strong>已批准检查点</strong><small>报告正在生成，完成后会出现在报告中心。</small></span>
+      <button class="plain-icon" aria-label="关闭通知"><svg><use href="#i-close"></use></svg></button>
+    </div>
+
+    <div class="overlay" id="scan-modal" hidden>
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="scan-modal-title" aria-describedby="scan-modal-description">
+        <header class="modal-header">
+          <div>
+            <span class="eyebrow">新建工作区</span>
+            <h2 id="scan-modal-title">配置一次代码扫描</h2>
+            <p id="scan-modal-description">扫描会创建代码图，并可能把选定源码上下文发送给配置的 LLM。</p>
+          </div>
+          <button class="icon-button" data-close-modal aria-label="关闭新建扫描对话框"><svg><use href="#i-close"></use></svg></button>
+        </header>
+        <form id="scan-form">
+          <div class="form-section">
+            <div class="section-number">01</div>
+            <fieldset>
+              <legend>扫描目标</legend>
+              <div class="field-grid">
+                <label class="field span-2">
+                  <span>仓库绝对路径 <b aria-hidden="true">*</b></span>
+                  <input name="repo" placeholder="/absolute/path/to/repository" required />
+                  <small>扫描会在目标目录写入 <span class="mono">.codegraph/</span></small>
+                </label>
+                <label class="field">
+                  <span>工作区名称 <b aria-hidden="true">*</b></span>
+                  <input
+                    name="workspace"
+                    placeholder="my-project-review-001"
+                    pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,127}"
+                    title="只能包含字母、数字、点、下划线和连字符"
+                    required
+                  />
+                </label>
+                <label class="field">
+                  <span>源码模式</span>
+                  <select name="source_mode">
+                    <option value="stripped">Stripped — 最少披露</option>
+                    <option value="raw">Raw — 完整源码</option>
+                  </select>
+                </label>
+              </div>
+            </fieldset>
+          </div>
+          <div class="form-section">
+            <div class="section-number">02</div>
+            <fieldset>
+              <legend>分析范围</legend>
+              <p class="field-help">选择语义富化和漏洞分析器。可以在检查点后继续调整。</p>
+              <div class="analyzer-grid">
+                <label class="check-card"><input type="checkbox" name="analyzers" value="auth" checked /><span><strong>身份认证</strong><small>令牌、会话与凭据</small></span></label>
+                <label class="check-card"><input type="checkbox" name="analyzers" value="authz" checked /><span><strong>访问控制</strong><small>越权、IDOR 与角色边界</small></span></label>
+                <label class="check-card"><input type="checkbox" name="analyzers" value="injection" checked /><span><strong>注入攻击</strong><small>SQL、命令与模板注入</small></span></label>
+                <label class="check-card"><input type="checkbox" name="analyzers" value="xss" checked /><span><strong>跨站脚本</strong><small>反射型与存储型 XSS</small></span></label>
+                <label class="check-card"><input type="checkbox" name="analyzers" value="ssrf" checked /><span><strong>SSRF</strong><small>服务端请求伪造</small></span></label>
+                <label class="check-card"><input type="checkbox" name="analyzers" value="business-logic" checked /><span><strong>业务逻辑</strong><small>业务规则与流程绕过</small></span></label>
+                <label class="check-card"><input type="checkbox" name="enrichment_analyzers" value="business-flow" checked /><span><strong>业务流富化</strong><small>入口、角色与数据流</small></span></label>
+                <label class="check-card"><input type="checkbox" name="enrichment_analyzers" value="invariant" checked /><span><strong>不变量富化</strong><small>约束与一致性规则</small></span></label>
+              </div>
+              <details class="advanced-options">
+                <summary>
+                  <span><strong>高级模型设置</strong><small>默认已针对长结构化输出优化</small></span>
+                  <span class="advanced-summary-value">自动扩容至 384K</span>
+                </summary>
+                <div class="advanced-options-body">
+                  <div class="field-grid">
+                    <label class="field">
+                      <span>单次输出初始额度</span>
+                      <select name="output_token_limit">
+                        <option value="auto" selected>自动 — 普通 32K / 富化 64K</option>
+                        <option value="32768">统一 32K</option>
+                        <option value="65536">统一 64K</option>
+                        <option value="131072">统一 128K</option>
+                        <option value="262144">统一 256K</option>
+                        <option value="393216">统一 384K</option>
+                      </select>
+                      <small>达到上限时会自动翻倍重试，最高 384K。</small>
+                    </label>
+                    <label class="field">
+                      <span>业务流批次大小</span>
+                      <input
+                        type="number"
+                        name="business_flow_batch_size"
+                        value="8"
+                        min="1"
+                        max="128"
+                        inputmode="numeric"
+                      />
+                      <small>较小批次可提高 JSON 完整性；推荐保持 8。</small>
+                    </label>
+                  </div>
+                </div>
+              </details>
+            </fieldset>
+          </div>
+          <div class="form-section compact-section">
+            <div class="section-number">03</div>
+            <fieldset>
+              <legend>人工检查点</legend>
+              <label class="switch-row">
+                <span><strong>分析后暂停等待审阅</strong><small>在生成最终报告前确认发现与证据</small></span>
+                <input type="checkbox" name="checkpoints" role="switch" checked />
+              </label>
+              <label class="disclosure-check">
+                <input type="checkbox" name="disclosure_acknowledged" required />
+                <span><strong>我确认有权披露所选源码上下文</strong><small>Argus 可能把必要的源码片段发送给当前配置的 LLM。</small></span>
+              </label>
+            </fieldset>
+          </div>
+          <footer class="modal-footer">
+            <span class="disclosure"><svg><use href="#i-shield"></use></svg>服务仅监听本机，不会开放远程访问</span>
+            <div>
+              <button class="button secondary" type="button" data-close-modal>取消</button>
+              <button class="button primary" type="submit"><svg><use href="#i-scan"></use></svg>开始扫描</button>
+            </div>
+          </footer>
+        </form>
+      </section>
+    </div>
+
+    <div class="overlay" id="intervention-modal" hidden>
+      <section
+        class="modal intervention-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="intervention-modal-title"
+        aria-describedby="intervention-modal-description"
+      >
+        <header class="modal-header">
+          <div>
+            <span class="eyebrow" id="intervention-eyebrow">人工接入 · 故障恢复</span>
+            <h2 id="intervention-modal-title">调整配置后继续</h2>
+            <p id="intervention-modal-description">修改会写回当前 checkpoint，并从尚未完成的节点继续运行。</p>
+          </div>
+          <button class="icon-button" data-close-intervention aria-label="关闭人工接入对话框">
+            <svg><use href="#i-close"></use></svg>
+          </button>
+        </header>
+        <form id="intervention-form">
+          <input type="hidden" name="workspace" />
+          <input type="hidden" name="action" />
+          <div class="recovery-context">
+            <div>
+              <span>工作区</span>
+              <strong class="mono" id="intervention-workspace">—</strong>
+            </div>
+            <div>
+              <span>恢复位置</span>
+              <strong id="intervention-stage">正在读取…</strong>
+            </div>
+            <div>
+              <span>已完成节点</span>
+              <strong id="intervention-progress">—</strong>
+            </div>
+          </div>
+          <div class="recovery-alert" id="intervention-alert" role="status">
+            <svg><use href="#i-shield"></use></svg>
+            <div>
+              <strong id="intervention-alert-title">先调整导致失败的参数</strong>
+              <p id="intervention-alert-detail">恢复会复用最近的 checkpoint，不会重跑已经完成的节点。</p>
+            </div>
+          </div>
+          <div class="form-section">
+            <div class="section-number">01</div>
+            <fieldset>
+              <legend>本次恢复设置</legend>
+              <div class="field-grid">
+                <label class="field span-2">
+                  <span>聚焦路径</span>
+                  <input name="focus" placeholder="例如 src/orders/；留空表示保持全局范围" />
+                  <small>缩小分析范围可减少上下文与长输出；此设置会写回后续节点。</small>
+                </label>
+                <label class="field">
+                  <span>单次输出初始额度</span>
+                  <select name="output_token_limit">
+                    <option value="auto">自动 — 普通 32K / 富化 64K</option>
+                    <option value="32768">统一 32K</option>
+                    <option value="65536">统一 64K</option>
+                    <option value="131072">统一 128K</option>
+                    <option value="262144">统一 256K</option>
+                    <option value="393216">统一 384K</option>
+                  </select>
+                  <small>达到上限时仍会自动翻倍重试，最高 384K。</small>
+                </label>
+                <label class="field">
+                  <span>业务流批次大小</span>
+                  <input
+                    type="number"
+                    name="business_flow_batch_size"
+                    min="1"
+                    max="128"
+                    value="8"
+                    inputmode="numeric"
+                  />
+                  <small>JSON 截断或结构错误时，建议把批次调小。</small>
+                </label>
+              </div>
+              <label class="switch-row recovery-switch">
+                <span>
+                  <strong>严格结构化输出</strong>
+                  <small>关闭后可容忍部分批次解析失败；排障时通常更容易继续。</small>
+                </span>
+                <input type="checkbox" name="strict_outputs" role="switch" />
+              </label>
+            </fieldset>
+          </div>
+          <div class="form-section">
+            <div class="section-number">02</div>
+            <fieldset>
+              <legend>分析器范围</legend>
+              <p class="field-help">取消导致持续失败的分析器，或只保留当前需要验证的类型。</p>
+              <div class="analyzer-grid intervention-analyzers" id="intervention-analyzers"></div>
+            </fieldset>
+          </div>
+          <details class="recovery-log">
+            <summary>
+              <span><strong>查看最近运行日志</strong><small>用于判断是额度、解析、网络还是分析器错误</small></span>
+            </summary>
+            <pre id="intervention-log" tabindex="0">正在读取日志…</pre>
+          </details>
+          <footer class="modal-footer">
+            <span class="disclosure">
+              <svg><use href="#i-shield"></use></svg>继续运行可能把必要的源码上下文发送给当前 LLM
+            </span>
+            <div>
+              <button class="button secondary" type="button" data-close-intervention>取消</button>
+              <button class="button primary" id="intervention-submit" type="submit">
+                <svg><use href="#i-arrow"></use></svg>应用调整并恢复
+              </button>
+            </div>
+          </footer>
+        </form>
+      </section>
+    </div>
+
+    <div class="drawer-overlay" id="finding-drawer" hidden>
+      <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
+        <header class="drawer-header">
+          <div>
+            <span class="severity-chip critical" id="drawer-severity">严重</span>
+            <h2 id="drawer-title">可预测认证令牌允许账户冒充</h2>
+            <p class="mono" id="drawer-id">auth:auth:cbad47e84584</p>
+          </div>
+          <button class="icon-button" data-close-drawer aria-label="关闭漏洞详情"><svg><use href="#i-close"></use></svg></button>
+        </header>
+        <div class="drawer-body">
+          <div class="finding-meta-grid">
+            <div><small>分析器</small><strong id="drawer-analyzer">auth</strong></div>
+            <div><small>置信度</small><strong id="drawer-confidence">高</strong></div>
+            <div><small>漏洞类别</small><strong id="drawer-class">Authentication</strong></div>
+            <div><small>状态</small><strong>待确认</strong></div>
+          </div>
+          <section class="detail-section">
+            <h3>为什么这是风险</h3>
+            <p id="drawer-rationale">令牌值完全由用户 ID 派生，没有密码学签名或随机性。攻击者可以计算任意用户的有效令牌，从而绕过身份认证。</p>
+          </section>
+          <section class="detail-section">
+            <div class="detail-title-row">
+              <h3>代码证据</h3>
+              <button class="text-button" id="copy-location"><svg><use href="#i-external"></use></svg>复制代码位置</button>
+            </div>
+            <div class="code-block evidence-block" id="drawer-evidence" aria-label="漏洞证据">
+              <div class="highlight"><span>›</span><code>正在读取证据…</code></div>
+            </div>
+            <span class="file-location"><svg><use href="#i-code"></use></svg><span class="mono" id="drawer-location">api/users.py:42</span></span>
+          </section>
+          <section class="detail-section">
+            <h3>数据流</h3>
+            <ol class="data-flow" id="drawer-data-flow">
+              <li><span>分析路径</span><strong>正在读取数据流…</strong></li>
+            </ol>
+          </section>
+          <section class="detail-section remediation">
+            <h3>修复建议</h3>
+            <p id="drawer-remediation">使用密码学安全的随机会话令牌或经过签名的 JWT；绑定用户会话，并增加过期、轮换与撤销机制。</p>
+          </section>
+        </div>
+        <footer class="drawer-footer">
+          <button class="button secondary" id="mark-false-positive">标记误报</button>
+          <button class="button primary" id="confirm-finding"><svg><use href="#i-check"></use></svg>确认发现</button>
+        </footer>
+      </aside>
+    </div>
+
+    <div class="overlay" id="artifact-modal" hidden>
+      <section class="modal artifact-modal" role="dialog" aria-modal="true" aria-labelledby="artifact-modal-title">
+        <header class="modal-header">
+          <div>
+            <span class="eyebrow" id="artifact-modal-eyebrow">工作区产物</span>
+            <h2 id="artifact-modal-title">内容预览</h2>
+          </div>
+          <button class="icon-button" data-close-artifact aria-label="关闭内容预览"><svg><use href="#i-close"></use></svg></button>
+        </header>
+        <section class="run-progress-panel" id="artifact-progress" aria-labelledby="artifact-progress-title" hidden>
+          <div class="run-progress-current">
+            <span class="progress-pulse" aria-hidden="true"></span>
+            <div>
+              <small id="artifact-progress-title">当前动作</small>
+              <strong id="artifact-progress-current">正在读取运行进度…</strong>
+            </div>
+          </div>
+          <ol class="run-progress-list" id="artifact-progress-list" aria-label="最近运行进度"></ol>
+        </section>
+        <div class="artifact-log-label" id="artifact-log-label" hidden>原始进程日志</div>
+        <pre id="artifact-content" tabindex="0">正在读取…</pre>
+        <footer class="modal-footer">
+          <span class="disclosure"><svg><use href="#i-shield"></use></svg>内容仅从本地工作区读取</span>
+          <button class="button secondary" type="button" data-close-artifact>关闭</button>
+        </footer>
+      </section>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

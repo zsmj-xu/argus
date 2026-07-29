@@ -22,11 +22,17 @@ _SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"]
 
 # 展示用标题大小写。
 _SEVERITY_LABEL = {
-    "critical": "Critical",
-    "high": "High",
-    "medium": "Medium",
-    "low": "Low",
-    "info": "Info",
+    "critical": "严重",
+    "high": "高危",
+    "medium": "中危",
+    "low": "低危",
+    "info": "提示",
+}
+
+_CONFIDENCE_LABEL = {
+    "high": "高",
+    "medium": "中",
+    "low": "低",
 }
 
 
@@ -50,9 +56,15 @@ def _severity_rank(severity: str) -> int:
 
 
 def _severity_label(severity: str) -> str:
-    """严重度的展示标题(已知值大写首字母,未知值原样标题化)。"""
+    """严重度的中文展示标题；未知值保持原样。"""
     normalized = severity.strip().lower()
-    return _SEVERITY_LABEL.get(normalized, severity.strip().title() or "Unknown")
+    return _SEVERITY_LABEL.get(normalized, severity.strip() or "未知")
+
+
+def _confidence_label(confidence: str) -> str:
+    """置信度的中文展示标题；未知值保持原样。"""
+    normalized = confidence.strip().lower()
+    return _CONFIDENCE_LABEL.get(normalized, confidence.strip() or "未知")
 
 
 def _group_by_severity(findings: list[Finding]) -> dict[str, list[Finding]]:
@@ -73,23 +85,23 @@ def _render_header(findings: list[Finding], state: ArgusState) -> list[str]:
     """标题 + 元信息 + 按严重度的汇总计数表。"""
     groups = _group_by_severity(findings)
     lines = [
-        f"# Argus Security Report — {state['workspace']}",
+        f"# Argus 安全报告 — {state['workspace']}",
         "",
-        f"- **Repository:** `{state['repo_path']}`",
-        f"- **Workspace:** `{state['workspace']}`",
-        f"- **Source mode:** `{_as_str(state['source_mode'])}`",
-        f"- **Total findings:** {len(findings)}",
+        f"- **仓库：** `{state['repo_path']}`",
+        f"- **工作区：** `{state['workspace']}`",
+        f"- **源码模式：** `{_as_str(state['source_mode'])}`",
+        f"- **漏洞总数：** {len(findings)}",
         "",
-        "## Summary by Severity",
+        "## 风险等级汇总",
         "",
     ]
 
     if not findings:
-        lines.append("_No findings — no vulnerabilities were identified in this run._")
+        lines.append("_未发现漏洞——本次扫描没有识别出可报告的安全问题。_")
         lines.append("")
         return lines
 
-    lines.append("| Severity | Count |")
+    lines.append("| 风险等级 | 数量 |")
     lines.append("| --- | --- |")
     for severity in _ordered_severities(groups):
         lines.append(f"| {_severity_label(severity)} | {len(groups[severity])} |")
@@ -145,10 +157,10 @@ def _location_link(file: str, line: int, repo_path: str, report_dir: str) -> str
 
 def _render_locations(finding: Finding, repo_path: str, report_dir: str) -> list[str]:
     """位置列表:每条渲染成可点击的 Markdown 链接 + 节点 id。"""
-    lines = ["**Locations:**", ""]
+    lines = ["**代码位置：**", ""]
     locations = finding["locations"]
     if not locations:
-        lines.append("- _No locations recorded._")
+        lines.append("- _未记录代码位置。_")
         lines.append("")
         return lines
 
@@ -156,7 +168,7 @@ def _render_locations(finding: Finding, repo_path: str, report_dir: str) -> list
         link = _location_link(location["file"], location["line"], repo_path, report_dir)
         node_id = location.get("node_id", "")
         if node_id:
-            lines.append(f"- {link} (node: `{node_id}`)")
+            lines.append(f"- {link}（节点：`{node_id}`）")
         else:
             lines.append(f"- {link}")
     lines.append("")
@@ -166,34 +178,34 @@ def _render_locations(finding: Finding, repo_path: str, report_dir: str) -> list
 def _render_finding(finding: Finding, index: int, repo_path: str, report_dir: str) -> list[str]:
     """渲染单条 finding:标题 + 徽章 + 元数据 + 位置 + 数据流 / 依据 / 证据 / 修复。"""
     severity = _severity_label(_as_str(finding["severity"]))
-    confidence = _as_str(finding["confidence"]).strip().title() or "Unknown"
+    confidence = _confidence_label(_as_str(finding["confidence"]))
 
     lines = [
         f"#### {index}. {finding['title']}",
         "",
-        f"**Severity:** {severity} · **Confidence:** {confidence}",
+        f"**风险等级：** {severity} · **置信度：** {confidence}",
         "",
-        f"- **Vulnerability class:** {finding['vuln_class']}",
-        f"- **Analyzer:** {finding['analyzer']}",
-        f"- **ID:** `{finding['id']}`",
+        f"- **漏洞类别：** {finding['vuln_class']}",
+        f"- **分析器：** {finding['analyzer']}",
+        f"- **ID：** `{finding['id']}`",
         "",
     ]
     lines.extend(_render_locations(finding, repo_path, report_dir))
 
     data_flow = finding["data_flow"].strip()
     if data_flow:
-        lines.extend(["**Data flow:**", "", data_flow, ""])
+        lines.extend(["**数据流：**", "", data_flow, ""])
 
     rationale = finding["rationale"].strip()
-    lines.extend(["**Rationale:**", "", rationale or "_Not provided._", ""])
+    lines.extend(["**风险说明：**", "", rationale or "_未提供。_", ""])
 
     evidence = finding["evidence"].strip()
     if evidence:
         fence = _code_fence(evidence)
-        lines.extend(["**Evidence:**", "", fence, evidence, fence, ""])
+        lines.extend(["**证据：**", "", fence, evidence, fence, ""])
 
     remediation = finding["remediation"].strip()
-    lines.extend(["**Remediation:**", "", remediation or "_Not provided._", ""])
+    lines.extend(["**修复建议：**", "", remediation or "_未提供。_", ""])
 
     return lines
 
@@ -216,7 +228,7 @@ def render_report(findings: list[Finding], state: ArgusState) -> str:
     repo_path = state["repo_path"]
     report_dir = os.path.dirname(state["report_path"])
 
-    lines.extend(["## Findings", ""])
+    lines.extend(["## 漏洞详情", ""])
 
     groups = _group_by_severity(findings)
     index = 0

@@ -1,7 +1,7 @@
 """Argus CLI —— argparse 分发 start / resume / continue / stop / workspaces。
 
 - start:建 workspace 目录 → build_graph → load_config → make_initial_state → 编译并 invoke 图。
-- resume:崩溃后用同 workspace 的 checkpointer 续跑;已完成节点(completed_nodes)不重跑。
+- resume:崩溃后用同 workspace 的 checkpointer 续跑;可在重试前注入配置。
 - continue:人看完检查点后主动放行 interrupt,推进图继续跑,并把 --set / --focus 注入进 state.config。
 - stop:M1 骨架。
 - workspaces:列出 runs/ 下的 workspace。
@@ -131,7 +131,7 @@ def _advance(
     - 有注入(--set / --focus)时,放行前先把注入合并进 state.config(见 _inject_into_state)。
     - 停在 interrupt 时:用 Command(resume=resume_value) 放行(本节点不重跑)。
     - 有待跑节点但不在 interrupt(如崩溃在节点中途)时:用 None 平推续跑。
-    action 仅用于日志,区分是 resume 还是 continue 触发。resume 不传注入;continue 可传。
+    action 仅用于日志,区分是 resume 还是 continue 触发;两者都可在推进前注入调整。
     """
     db_path = os.path.join(workspace_dir(workspace, RUNS_ROOT), "state.db")
     if not os.path.exists(db_path):
@@ -168,8 +168,14 @@ def _advance(
 
 
 def cmd_resume(args: argparse.Namespace) -> int:
-    """resume:崩溃后续跑。可能停在 interrupt,也可能停在节点中途;两种都推进。"""
-    return _advance(args.workspace, "approved", "resume")
+    """resume:崩溃后调整配置并续跑。可能停在 interrupt,也可能停在节点中途。"""
+    return _advance(
+        args.workspace,
+        "approved",
+        "resume",
+        overrides=list(args.set or []),
+        focus=args.focus,
+    )
 
 
 def cmd_continue(args: argparse.Namespace) -> int:
@@ -211,6 +217,13 @@ def cmd_workspaces(_args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_web(args: argparse.Namespace) -> int:
+    """启动仅监听本机的 Argus Web Console。"""
+    from argus.web import serve
+
+    return serve(args)
+
+
 def _build_parser() -> argparse.ArgumentParser:
     """装配 argparse 子命令解析器。"""
     parser = argparse.ArgumentParser(prog="argus", description="AI 白盒代码扫描编排器")
@@ -224,8 +237,10 @@ def _build_parser() -> argparse.ArgumentParser:
     start.add_argument("--yolo", action="store_true", help="跳过所有 checkpoint,一次跑到底")
     start.set_defaults(func=cmd_start)
 
-    resume = subparsers.add_parser("resume", help="从上次 checkpoint 续跑")
+    resume = subparsers.add_parser("resume", help="从上次 checkpoint 调整配置并续跑")
     resume.add_argument("-w", "--workspace", required=True, help="workspace 名")
+    resume.add_argument("--set", action="append", default=[], help="重试前注入点路径覆盖(可多次)")
+    resume.add_argument("--focus", default=None, help="重试前调整聚焦路径")
     resume.set_defaults(func=cmd_resume)
 
     cont = subparsers.add_parser("continue", help="人审阅后放行 interrupt 检查点,推进图继续跑")
@@ -239,6 +254,12 @@ def _build_parser() -> argparse.ArgumentParser:
 
     workspaces = subparsers.add_parser("workspaces", help="列出所有 workspace")
     workspaces.set_defaults(func=cmd_workspaces)
+
+    web = subparsers.add_parser("web", help="启动本地 Web Console")
+    web.add_argument("--host", default="127.0.0.1", help="监听地址（仅允许 loopback）")
+    web.add_argument("--port", type=int, default=8765, help="监听端口")
+    web.add_argument("--runs-root", default=RUNS_ROOT, help="工作区根目录")
+    web.set_defaults(func=cmd_web)
 
     return parser
 

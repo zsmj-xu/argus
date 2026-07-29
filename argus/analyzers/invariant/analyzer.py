@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from argus.analyzers.base import AnalyzerBase
 from argus.contracts import Phase
+from argus.llm.client import HEAVY_MAX_TOKENS
 
 if TYPE_CHECKING:
     from argus.contracts import AnalysisContext, AnalyzerResult
@@ -46,9 +47,9 @@ class InvariantAnalyzer(AnalyzerBase):
         # a literal JSON example with braces that must not be interpreted as placeholders.
         prompt = prompt_template.replace("{skeleton}", skeleton).replace("{source}", source_context)
         settings = ctx["config"].get(self.name, {})
-        max_tokens = settings.get("max_tokens", 8192) if isinstance(settings, dict) else 8192
+        max_tokens = settings.get("max_tokens", HEAVY_MAX_TOKENS) if isinstance(settings, dict) else HEAVY_MAX_TOKENS
         if not isinstance(max_tokens, int) or isinstance(max_tokens, bool) or max_tokens <= 0:
-            max_tokens = 8192
+            max_tokens = HEAVY_MAX_TOKENS
         strict_outputs = ctx["config"].get("strict_outputs") is True
 
         try:

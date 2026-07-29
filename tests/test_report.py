@@ -91,8 +91,8 @@ def test_report_groups_by_severity_and_links_nodes() -> None:
         )
     ]
     md = render_report(findings, _state(repo_path="/x", workspace="w"))
-    assert "# " in md
-    assert "high" in md.lower()
+    assert "# Argus 安全报告" in md
+    assert "高危" in md
     # 位置必须是可点击的 Markdown 链接,而非纯反引号代码文本。
     # 链接文本仍是 file:line;目标用尖括号包裹,以 <...#L10> 结尾。
     assert "[api/o.py:10](<" in md
@@ -115,9 +115,9 @@ def test_severity_groups_ordered_descending() -> None:
     ]
     md = render_report(findings, _state())
     # critical 段必须出现在 high 段之前,high 段在 low 段之前。
-    idx_crit = md.lower().index("critical")
-    idx_high = md.lower().index("high")
-    idx_low = md.lower().index("low")
+    idx_crit = md.index("严重")
+    idx_high = md.index("高危")
+    idx_low = md.index("低危")
     assert idx_crit < idx_high < idx_low
 
 
@@ -128,8 +128,8 @@ def test_string_severity_and_confidence_do_not_crash() -> None:
     ]
     md = render_report(findings, _state())
     assert "StrSev" in md
-    assert "critical" in md.lower()
-    assert "high" in md.lower()
+    assert "严重" in md
+    assert "置信度：** 高" in md
 
 
 def test_severity_counts_summary() -> None:
@@ -142,9 +142,8 @@ def test_severity_counts_summary() -> None:
     # 总数为 3。
     assert "3" in md
     # 汇总里 high 记 2、low 记 1。
-    lower = md.lower()
-    assert "high" in lower
-    assert "low" in lower
+    assert "高危" in md
+    assert "低危" in md
     # 每条 finding 标题都出现。
     for title in ("H1", "H2", "L1"):
         assert title in md
@@ -181,6 +180,33 @@ def test_all_finding_fields_rendered() -> None:
     assert "unsanitized input reaches SQL" in md
     assert "cursor.execute" in md
     assert "use parameterized queries" in md
+
+
+def test_report_labels_are_simplified_chinese() -> None:
+    md = render_report(
+        [
+            _finding(
+                title="未授权读取订单",
+                rationale="处理函数没有校验订单归属。",
+                evidence="order = Order.query.get(order_id)",
+                remediation="按当前用户过滤订单。",
+                data_flow="请求参数 -> 订单查询 -> 响应",
+            )
+        ],
+        _state(),
+    )
+
+    for label in (
+        "Argus 安全报告",
+        "风险等级汇总",
+        "漏洞详情",
+        "代码位置",
+        "数据流",
+        "风险说明",
+        "证据",
+        "修复建议",
+    ):
+        assert label in md
 
 
 def test_locations_render_as_clickable_markdown_links() -> None:

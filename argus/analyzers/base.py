@@ -20,6 +20,16 @@ from argus.contracts import CodeLocation, Confidence, Finding, Phase, Severity
 if TYPE_CHECKING:
     from argus.contracts import AnalysisContext, AnalyzerResult
 
+_SIMPLIFIED_CHINESE_OUTPUT_POLICY = """
+
+输出语言要求（必须遵守）：
+- 所有面向人的自然语言内容必须使用简体中文，包括漏洞标题、风险说明、证据说明、
+  数据流说明、修复建议、业务规则、业务流程和不变量描述。
+- JSON 字段名以及 severity、confidence、vuln_class 等枚举值保持契约规定的英文。
+- 代码标识符、函数名、类名、文件路径、HTTP 路径、参数名、CWE 编号和代码片段保持原样，
+  不要翻译或改写。
+"""
+
 
 class AnalyzerBase:
     """分析器基类。子类须设置 name/phase/requires 并实现 run()。"""
@@ -36,7 +46,7 @@ class AnalyzerBase:
         module_file = inspect.getfile(type(self))
         prompt_path = os.path.join(os.path.dirname(module_file), filename)
         with open(prompt_path, encoding="utf-8") as handle:
-            return handle.read()
+            return handle.read().rstrip() + _SIMPLIFIED_CHINESE_OUTPUT_POLICY
 
     def _make_finding(
         self,

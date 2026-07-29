@@ -20,6 +20,9 @@ argus = "argus.cli:main"
 include = ["argus*"]
 exclude = ["evaluation*", "tests*"]
 
+[tool.setuptools.package-data]
+argus = ["web_ui/*"]
+
 [tool.ruff]
 line-length = 120
 extend-exclude = ["evaluation/targets"]
