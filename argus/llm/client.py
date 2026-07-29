@@ -11,8 +11,9 @@ from typing import Any
 import httpx
 from dotenv import find_dotenv, load_dotenv
 
-from argus.llm.audit import append_audit
+from argus.llm.audit import AuditLevel, append_audit
 from argus.progress import emit_progress
+from argus.security.redaction import safe_error_summary
 
 ENV_BASE_URL = "ARGUS_LLM_BASE_URL"
 ENV_API_KEY = "ARGUS_LLM_API_KEY"
@@ -114,12 +115,14 @@ class AuditedLLM:
         model: str = "",
         client: Any | None = None,
         runs_root: str = "runs",
+        audit_level: AuditLevel = AuditLevel.REDACTED,
     ) -> None:
         self.workspace = workspace
         self.base_url = base_url
         self.api_key = api_key
         self.model = model
         self.runs_root = runs_root
+        self.audit_level = audit_level
         self._client = client if client is not None else self._build_client(api_key)
 
     @staticmethod
@@ -196,7 +199,7 @@ class AuditedLLM:
                 emit_progress(
                     self.workspace,
                     event="llm_request_failed",
-                    message=f"模型请求失败：{type(exc).__name__}: {exc}",
+                    message=f"模型请求失败：{safe_error_summary(exc)}",
                     runs_root=self.runs_root,
                     level="error",
                     model=self.model,
@@ -215,7 +218,7 @@ class AuditedLLM:
                 emit_progress(
                     self.workspace,
                     event="llm_response_invalid",
-                    message=f"模型响应格式无效：{type(exc).__name__}: {exc}",
+                    message=f"模型响应格式无效：{safe_error_summary(exc)}",
                     runs_root=self.runs_root,
                     level="error",
                     model=self.model,
@@ -243,7 +246,12 @@ class AuditedLLM:
                 "attempt": attempt,
                 "max_tokens": current_max_tokens,
             }
-            append_audit(self.workspace, record, runs_root=self.runs_root)
+            append_audit(
+                self.workspace,
+                record,
+                runs_root=self.runs_root,
+                level=self.audit_level,
+            )
             elapsed = round(time.monotonic() - request_started, 1)
             completion_tokens = usage.get("completion_tokens") if isinstance(usage, dict) else None
             emit_progress(

@@ -35,6 +35,7 @@ from argus.contracts import (
 )
 from argus.graph.build import build_graph
 from argus.graph.codegraph import CodegraphHandle
+from argus.llm.audit import AuditLevel
 from argus.llm.client import ENV_API_KEY, ENV_BASE_URL, ENV_MODEL, AuditedLLM, load_llm_environment
 from argus.orchestration.checkpoints import (
     REVIEW_ENRICHMENT,
@@ -128,6 +129,7 @@ def _build_context(state: ArgusState, graph: GraphHandle) -> AnalysisContext:
         model=os.environ.get(ENV_MODEL, ""),
         workspace=state["workspace"],
         runs_root=runs_root,
+        audit_level=_audit_level(state["config"]),
     )
     source: SourceAccess = _FileSourceAccess(state["repo_path"], state["source_mode"])
 
@@ -139,6 +141,15 @@ def _build_context(state: ArgusState, graph: GraphHandle) -> AnalysisContext:
         "llm": llm,
         "workspace": state["workspace"],
     }
+
+
+def _audit_level(config: dict[str, Any]) -> AuditLevel:
+    llm = config.get("llm")
+    raw = llm.get("auditLevel", AuditLevel.REDACTED.value) if isinstance(llm, dict) else AuditLevel.REDACTED.value
+    try:
+        return AuditLevel(str(raw))
+    except ValueError as exc:
+        raise ValueError(f"invalid llm.auditLevel: {raw!r}") from exc
 
 
 def _selected_names(state: ArgusState, phase: Phase) -> list[str]:

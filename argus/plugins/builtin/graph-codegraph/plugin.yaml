@@ -1,0 +1,21 @@
+apiVersion: argus.security/v2
+kind: graph_provider
+metadata:
+  id: graph.codegraph
+  version: 1.0.0
+entrypoint: argus.plugins.legacy_runtime:graph_provider_runtime
+consumes:
+  - capability: source.snapshot.v1
+    required: true
+produces:
+  - capability: code.graph.codegraph.v1
+    artifactType: code.graph.codegraph
+    schemaVersion: "1.0"
+permissions:
+  source: read
+  network: none
+  subprocess: restricted
+  secrets: none
+runtime:
+  isolation: process
+  timeoutSeconds: 3600

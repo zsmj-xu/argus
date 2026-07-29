@@ -7,11 +7,22 @@
 from __future__ import annotations
 
 import copy
+from typing import Literal
 from typing import Any
 
 import yaml
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    JsonValue,
+    StrictBool,
+    ValidationError,
+    model_validator,
+)
 
 from argus.contracts import SourceMode
+from argus.llm.audit import AuditLevel
 
 # 默认配置。人可用 YAML 覆盖任意子树,或用命令行 `--set a.b=c` 打点覆盖。
 # - analyzers.enrichment:富化器 name 列表(产语义,喂给下游漏洞分析器)。
@@ -25,7 +36,122 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "checkpoints": True,
     "source_mode": SourceMode.RAW.value,
+    "llm": {
+        "auditLevel": AuditLevel.REDACTED.value,
+    },
+    "verification": {
+        "enabled": False,
+        "allow_safe_read": False,
+        "allow_reversible_write": False,
+    },
 }
+
+
+class _ConfigModel(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
+class AnalyzerConfig(_ConfigModel):
+    enrichment: list[str] = Field(default_factory=list)
+    vuln: list[str] = Field(default_factory=lambda: ["authz"])
+
+
+class VerificationConfig(_ConfigModel):
+    enabled: StrictBool = False
+    allow_safe_read: StrictBool = False
+    allow_reversible_write: StrictBool = False
+
+
+class SourceConfig(_ConfigModel):
+    mode: SourceMode | None = None
+    ignore: list[str] = Field(default_factory=list)
+
+
+class LlmConfig(_ConfigModel):
+    audit_level: AuditLevel = Field(
+        default=AuditLevel.REDACTED,
+        alias="auditLevel",
+    )
+
+
+class EngineConfig(_ConfigModel):
+    type: Literal["local"] = "local"
+
+
+class PluginConfig(_ConfigModel):
+    enabled: list[str] = Field(default_factory=list)
+    providers: dict[str, str] = Field(default_factory=dict)
+    allow_external: StrictBool = Field(default=False, alias="allowExternal")
+    external_roots: list[str] = Field(default_factory=list, alias="externalRoots")
+    config: dict[str, dict[str, JsonValue]] = Field(default_factory=dict)
+
+
+class CoreConfig(_ConfigModel):
+    schema_version: Literal["2"] | None = Field(default=None, alias="schemaVersion")
+    analyzers: AnalyzerConfig = Field(default_factory=AnalyzerConfig)
+    checkpoints: StrictBool | list[str] = True
+    source_mode: SourceMode | None = None
+    source: SourceConfig | None = None
+    analysis_mode: Literal["legacy", "v2", "compare"] = Field(
+        default="v2",
+        alias="analysisMode",
+    )
+    verification: VerificationConfig = Field(default_factory=VerificationConfig)
+    llm: LlmConfig = Field(default_factory=LlmConfig)
+    engine: EngineConfig | None = None
+    plugins: PluginConfig | None = None
+    strict_outputs: StrictBool | None = None
+    focus: str | list[str] | None = None
+    avoid: str | list[str] | None = None
+    auth: dict[str, JsonValue] | None = None
+    authz: dict[str, JsonValue] | None = None
+    injection: dict[str, JsonValue] | None = None
+    xss: dict[str, JsonValue] | None = None
+    ssrf: dict[str, JsonValue] | None = None
+    invariant: dict[str, JsonValue] | None = None
+    baseline: dict[str, JsonValue] | None = None
+    business_flow: dict[str, JsonValue] | None = Field(
+        default=None,
+        alias="business-flow",
+    )
+    business_logic: dict[str, JsonValue] | None = Field(
+        default=None,
+        alias="business-logic",
+    )
+    shannon: dict[str, JsonValue] | None = None
+    codegraph: dict[str, JsonValue] | None = None
+    detection: dict[str, JsonValue] | None = None
+    execution: dict[str, JsonValue] | None = None
+    extensions: dict[str, JsonValue] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def reconcile_source_mode(self) -> CoreConfig:
+        if (
+            self.source is not None
+            and self.source.mode is not None
+            and self.source_mode is not None
+            and self.source.mode is not self.source_mode
+        ):
+            raise ValueError("source.mode and source_mode must match when both are set")
+        return self
+
+
+def validate_config(config: dict[str, Any]) -> dict[str, Any]:
+    try:
+        validated = CoreConfig.model_validate(config)
+    except ValidationError as exc:
+        raise ValueError(f"invalid Argus config: {exc}") from exc
+    result = validated.model_dump(
+        mode="json",
+        by_alias=True,
+        exclude_none=True,
+    )
+    result["source_mode"] = (
+        validated.source.mode.value
+        if validated.source is not None and validated.source.mode is not None
+        else (validated.source_mode.value if validated.source_mode is not None else SourceMode.RAW.value)
+    )
+    return result
 
 
 def _deep_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
@@ -91,4 +217,4 @@ def load_config(yaml_path: str | None, overrides: list[str]) -> dict[str, Any]:
             _deep_merge(cfg, loaded)
 
     apply_overrides(cfg, overrides)
-    return cfg
+    return validate_config(cfg)

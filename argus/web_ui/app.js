@@ -28,6 +28,18 @@ let findingsWorkspaceScope = "all";
 let findingsLoadRequest = 0;
 let artifactLogWorkspace = null;
 let artifactRefreshTimer = null;
+let controlProjects = [];
+let selectedControlProjectId = null;
+let selectedControlScanId = null;
+let controlScanData = null;
+let controlTasks = [];
+let controlArtifacts = [];
+let controlFindings = [];
+let controlReviews = [];
+let controlEvents = [];
+let verificationApprovals = [];
+let verificationEnvironments = [];
+let verificationIdentities = [];
 
 function setTheme(theme) {
   root.dataset.theme = theme;
@@ -126,7 +138,470 @@ function statusLabel(status) {
     complete: "扫描完成",
     failed: "运行失败",
     created: "工作区已创建",
+    snapshotting: "创建源码快照",
+    planning: "编译任务计划",
+    ready: "准备运行",
+    waiting_review: "等待人工静态审核",
+    static_completed: "静态分析完成",
+    completed: "扫描完成",
+    canceled: "已取消",
+    interrupted: "执行中断",
+    failed_retryable: "可重试失败",
+    pending: "等待依赖",
+    succeeded: "成功",
+    skipped: "已跳过",
   }[status] || "状态未知";
+}
+
+function shortId(value) {
+  return value ? String(value).slice(0, 8) : "—";
+}
+
+function controlCell(value, className = "") {
+  const cell = document.createElement("td");
+  if (className) cell.className = className;
+  cell.textContent = value ?? "—";
+  return cell;
+}
+
+function renderProjects(projects) {
+  controlProjects = projects;
+  setText("#project-nav-count", String(projects.length));
+  setText("#projects-summary", `${projects.length} 个持久化项目`);
+  const body = document.querySelector("#projects-body");
+  body.replaceChildren();
+  if (!projects.length) {
+    const row = document.createElement("tr");
+    const cell = controlCell("尚未登记项目。使用右侧表单添加一个仓库。");
+    cell.colSpan = 5;
+    row.append(cell);
+    body.append(row);
+    return;
+  }
+  projects.forEach((project) => {
+    const row = document.createElement("tr");
+    const name = controlCell("");
+    const strong = document.createElement("strong");
+    strong.textContent = project.name;
+    const config = document.createElement("small");
+    config.textContent = `默认配置 ${JSON.stringify(project.default_config || {})}`;
+    name.append(strong, config);
+    const repository = controlCell(project.repository_path, "mono");
+    const scans = controlCell(String(project.scan_count || 0));
+    const latest = controlCell(
+      project.latest_scan
+        ? `${statusLabel(project.latest_scan.status)} · ${shortId(project.latest_scan.id)}`
+        : "尚无扫描"
+    );
+    const action = controlCell("");
+    const button = document.createElement("button");
+    button.className = "mini-button";
+    button.textContent = project.latest_scan ? "打开最近扫描" : "选择项目";
+    button.dataset.controlProject = project.id;
+    if (project.latest_scan) button.dataset.controlScan = project.latest_scan.id;
+    action.append(button);
+    row.append(name, repository, scans, latest, action);
+    body.append(row);
+  });
+}
+
+function renderControlScan(scan) {
+  controlScanData = scan;
+  if (!scan) {
+    setText("#control-scan-title", "持久化 Scan Overview");
+    setText("#control-scan-meta", "选择一个包含历史扫描的项目。");
+    document.querySelector("#control-scan-summary").replaceChildren();
+    document.querySelector("#control-scan-resume").disabled = true;
+    document.querySelector("#control-scan-cancel").disabled = true;
+    return;
+  }
+  setText("#control-scan-title", `Scan ${shortId(scan.id)} · ${statusLabel(scan.status)}`);
+  setText(
+    "#control-scan-meta",
+    `Snapshot ${shortId(scan.snapshot_id)} · Config ${shortId(scan.config_hash)} · ${scan.engine.toUpperCase()}`
+  );
+  const summary = document.querySelector("#control-scan-summary");
+  summary.replaceChildren();
+  [
+    ["Tasks", scan.summary?.tasks || 0],
+    ["Artifacts", scan.summary?.artifacts || 0],
+    ["Findings", scan.summary?.findings || 0],
+    ["Open Reviews", scan.summary?.open_reviews || 0],
+  ].forEach(([label, value]) => {
+    const item = document.createElement("div");
+    const small = document.createElement("small");
+    small.textContent = label;
+    const strong = document.createElement("strong");
+    strong.textContent = String(value);
+    item.append(small, strong);
+    summary.append(item);
+  });
+  setText("#control-static-review", scan.static_review?.status || "not_requested");
+  setText(
+    "#control-dynamic-verification",
+    `${scan.dynamic_verification?.status || "disabled"} · M8 仅规划/审批，不执行网络请求`
+  );
+  const resumable = ["ready", "running", "waiting_review"].includes(scan.status);
+  const terminal = ["completed", "failed", "canceled"].includes(scan.status);
+  document.querySelector("#control-scan-resume").disabled = !resumable;
+  document.querySelector("#control-scan-cancel").disabled = terminal;
+}
+
+function renderControlTasks(tasks) {
+  controlTasks = tasks;
+  const body = document.querySelector("#control-tasks-body");
+  body.replaceChildren();
+  if (!tasks.length) {
+    const row = document.createElement("tr");
+    const cell = controlCell("当前 Scan 尚无持久化 Task。");
+    cell.colSpan = 7;
+    row.append(cell);
+    body.append(row);
+    return;
+  }
+  const names = new Map(tasks.map((task) => [task.id, task.plugin_id]));
+  tasks.forEach((task) => {
+    const row = document.createElement("tr");
+    const name = controlCell("");
+    const strong = document.createElement("strong");
+    strong.textContent = task.plugin_id;
+    const detail = document.createElement("small");
+    detail.textContent = `${task.kind} · ${shortId(task.id)} · ${task.attempts?.length || 0} attempt(s)`;
+    name.append(strong, detail);
+    row.append(
+      name,
+      controlCell((task.depends_on || []).map((id) => names.get(id) || shortId(id)).join(" → ") || "root"),
+      controlCell(statusLabel(task.status)),
+      controlCell(task.duration_seconds == null ? "—" : `${task.duration_seconds.toFixed(2)}s`),
+      controlCell((task.input_artifact_ids || []).map(shortId).join(", ") || "—", "mono"),
+      controlCell((task.output_artifacts || []).map((item) => item.artifact_type).join(", ") || "—"),
+      controlCell(task.error_message || "—")
+    );
+    body.append(row);
+  });
+}
+
+function renderControlArtifacts(artifacts) {
+  controlArtifacts = artifacts;
+  const body = document.querySelector("#control-artifacts-body");
+  body.replaceChildren();
+  if (!artifacts.length) {
+    const row = document.createElement("tr");
+    const cell = controlCell("当前 Scan 尚无 Artifact。");
+    cell.colSpan = 6;
+    row.append(cell);
+    body.append(row);
+    return;
+  }
+  artifacts.forEach((artifact) => {
+    const row = document.createElement("tr");
+    row.append(
+      controlCell(shortId(artifact.id), "mono"),
+      controlCell(`${artifact.artifact_type}\n${(artifact.capabilities || []).join(", ")}`),
+      controlCell(`${artifact.producer_plugin_id}@${artifact.producer_plugin_version}`),
+      controlCell(artifact.schema_version),
+      controlCell(`${shortId(artifact.content_hash)} · ${artifact.size_bytes} bytes`, "mono")
+    );
+    const actions = controlCell("");
+    const preview = document.createElement("button");
+    preview.className = "mini-button";
+    preview.textContent = "预览";
+    preview.dataset.controlArtifact = artifact.id;
+    const download = document.createElement("a");
+    download.className = "mini-button";
+    download.textContent = "下载";
+    download.href = `/api/artifacts/${artifact.id}?download=1`;
+    actions.append(preview, download);
+    row.append(actions);
+    body.append(row);
+  });
+}
+
+function renderControlReviews(reviews) {
+  controlReviews = reviews;
+  const queue = document.querySelector("#review-queue");
+  queue.replaceChildren();
+  if (!reviews.length) {
+    const empty = document.createElement("article");
+    empty.className = "queue-card";
+    const title = document.createElement("h2");
+    title.textContent = "没有持久化审核请求";
+    const copy = document.createElement("p");
+    copy.textContent = "人工静态审核与动态验证审批是独立状态。";
+    empty.append(title, copy);
+    queue.append(empty);
+    return;
+  }
+  reviews.slice().reverse().forEach((review) => {
+    const card = document.createElement("article");
+    card.className = "queue-card";
+    const title = document.createElement("h2");
+    title.textContent = `${review.subject_type} · ${review.status}`;
+    const copy = document.createElement("p");
+    copy.textContent = `Subject hash ${review.subject_hash} · ${review.subject_ids.length} item(s)`;
+    const meta = document.createElement("div");
+    meta.className = "queue-meta";
+    meta.textContent = review.reviewer
+      ? `${review.reviewer} · ${review.reason || "无理由"}`
+      : "等待人工静态审核；不代表动态确认";
+    card.append(title, copy, meta);
+    if (review.status === "open") {
+      const actions = document.createElement("div");
+      actions.className = "queue-actions";
+      ["approve", "reject"].forEach((action) => {
+        const button = document.createElement("button");
+        button.className = `mini-button${action === "approve" ? " primary" : ""}`;
+        button.textContent = action === "approve" ? "批准静态产物" : "拒绝";
+        button.dataset.controlReview = review.id;
+        button.dataset.reviewDecision = action;
+        actions.append(button);
+      });
+      card.append(actions);
+    }
+    queue.append(card);
+  });
+}
+
+function renderVerificationCenter(approvals, environments, identities, findings) {
+  verificationApprovals = approvals;
+  verificationEnvironments = environments;
+  verificationIdentities = identities;
+  const queue = document.querySelector("#verification-queue");
+  queue.replaceChildren();
+  const pending = approvals.filter((item) => item.decision === "pending");
+  setText("#verification-approval-count", String(pending.length));
+  setText(
+    "#verification-profile-summary",
+    `${environments.length} 个环境 · ${identities.length} 个身份 · M9 仅限人工批准的只读测试环境`
+  );
+
+  const currentApprovalPlans = new Set(
+    approvals
+      .filter((item) => ["pending", "approved"].includes(item.decision))
+      .map((item) => item.plan_id)
+  );
+  findings.forEach((finding) => {
+    const verification = finding.dynamic_verification || {};
+    if (verification.status === "missing_inputs") {
+      const card = document.createElement("article");
+      card.className = "queue-card";
+      const title = document.createElement("h3");
+      title.textContent = `${finding.title} · 缺少验证输入`;
+      const copy = document.createElement("p");
+      copy.textContent = (verification.missing_fields || []).join(" · ") || "需求尚未满足";
+      const meta = document.createElement("div");
+      meta.className = "queue-meta";
+      meta.textContent = "缺少环境、身份或测试数据时不能生成计划。";
+      card.append(title, copy, meta);
+      queue.append(card);
+    } else if (
+      verification.status === "ready" &&
+      verification.plan_id &&
+      !currentApprovalPlans.has(verification.plan_id)
+    ) {
+      const card = document.createElement("article");
+      card.className = "queue-card";
+      const title = document.createElement("h3");
+      title.textContent = `${finding.title} · Plan Ready`;
+      const copy = document.createElement("p");
+      copy.textContent = `Plan hash ${verification.plan_hash || "—"}`;
+      const meta = document.createElement("div");
+      meta.className = "queue-meta";
+      meta.textContent = "请求审批不会执行计划；批准后仍需手动提供测试资源 ID。";
+      const button = document.createElement("button");
+      button.className = "mini-button primary";
+      button.textContent = "请求计划审批";
+      button.dataset.verificationPlan = verification.plan_id;
+      card.append(title, copy, meta, button);
+      queue.append(card);
+    }
+  });
+
+  approvals.slice().reverse().forEach((approval) => {
+    const card = document.createElement("article");
+    card.className = "queue-card";
+    const title = document.createElement("h3");
+    title.textContent = `Verification Plan ${shortId(approval.plan_id)} · ${approval.decision}`;
+    const copy = document.createElement("p");
+    copy.textContent = `Plan hash ${approval.plan_hash}`;
+    const meta = document.createElement("div");
+    meta.className = "queue-meta";
+    meta.textContent = approval.reviewer
+      ? `${approval.reviewer} · ${approval.reason || "无理由"}`
+      : `到期 ${new Date(approval.expires_at).toLocaleString()} · 审批与当前 plan hash 绑定`;
+    card.append(title, copy, meta);
+    if (approval.decision === "pending") {
+      const actions = document.createElement("div");
+      actions.className = "queue-actions";
+      ["approve", "reject"].forEach((decision) => {
+        const button = document.createElement("button");
+        button.className = `mini-button${decision === "approve" ? " primary" : ""}`;
+        button.textContent = decision === "approve" ? "批准计划" : "拒绝计划";
+        button.dataset.verificationApproval = approval.id;
+        button.dataset.verificationDecision = decision;
+        actions.append(button);
+      });
+      card.append(actions);
+    } else if (approval.decision === "approved") {
+      const form = document.createElement("form");
+      form.className = "verification-execute-form";
+      form.dataset.verificationExecuteForm = approval.plan_id;
+      const label = document.createElement("label");
+      label.htmlFor = `verification-resource-${approval.plan_id}`;
+      label.textContent = "测试资源 ID";
+      const input = document.createElement("input");
+      input.id = `verification-resource-${approval.plan_id}`;
+      input.name = "resource_id";
+      input.required = true;
+      input.autocomplete = "off";
+      input.placeholder = "仅输入已准备的测试 fixture ID";
+      input.setAttribute("aria-describedby", `verification-help-${approval.plan_id}`);
+      const help = document.createElement("small");
+      help.id = `verification-help-${approval.plan_id}`;
+      help.textContent = "不会自动枚举；执行前会再次校验审批、allowlist、身份和预算。";
+      const button = document.createElement("button");
+      button.className = "mini-button primary";
+      button.type = "submit";
+      button.textContent = "执行只读验证";
+      form.append(label, input, help, button);
+      card.append(form);
+    }
+    queue.append(card);
+  });
+
+  if (!queue.children.length) {
+    const empty = document.createElement("article");
+    empty.className = "queue-card";
+    const title = document.createElement("h3");
+    title.textContent = "没有动态验证需求或审批";
+    const copy = document.createElement("p");
+    copy.textContent = "verification.enabled 默认 false；静态扫描不受影响。";
+    empty.append(title, copy);
+    queue.append(empty);
+  }
+}
+
+async function loadVerificationCenter(projectId, findings) {
+  if (!projectId) {
+    renderVerificationCenter([], [], [], findings || []);
+    return;
+  }
+  const [approvalsPayload, environmentsPayload, identitiesPayload] =
+    await Promise.all([
+      api("/api/verification/approvals"),
+      api(`/api/projects/${projectId}/verification/environments`),
+      api(`/api/projects/${projectId}/verification/identities`),
+    ]);
+  renderVerificationCenter(
+    approvalsPayload.approvals || [],
+    environmentsPayload.environments || [],
+    identitiesPayload.identities || [],
+    findings || []
+  );
+}
+
+function renderControlEvents(events) {
+  controlEvents = events;
+  const body = document.querySelector("#control-events-body");
+  body.replaceChildren();
+  if (!events.length) {
+    const row = document.createElement("tr");
+    const cell = controlCell("当前 Scan 尚无结构化事件。");
+    cell.colSpan = 5;
+    row.append(cell);
+    body.append(row);
+    return;
+  }
+  events.slice().reverse().forEach((event) => {
+    const row = document.createElement("tr");
+    row.append(
+      controlCell(`#${event.sequence || "—"}\n${new Date(event.created_at).toLocaleString()}`),
+      controlCell(event.event_type),
+      controlCell(event.level),
+      controlCell(`${shortId(event.task_id)} / ${shortId(event.finding_id)}`, "mono"),
+      controlCell(JSON.stringify(event.payload || {}), "mono")
+    );
+    body.append(row);
+  });
+}
+
+function projectForScan(scanId) {
+  return controlProjects.find((project) =>
+    (project.scans || []).some((scan) => scan.id === scanId)
+  );
+}
+
+async function loadControlScan(scanId) {
+  if (!scanId) {
+    selectedControlScanId = null;
+    renderControlScan(null);
+    renderControlTasks([]);
+    renderControlArtifacts([]);
+    renderControlReviews([]);
+    renderControlEvents([]);
+    await loadVerificationCenter(selectedControlProjectId, []);
+    return;
+  }
+  selectedControlScanId = scanId;
+  const [scan, tasksPayload, artifactsPayload, findingsPayload, reviewsPayload, eventsPayload] =
+    await Promise.all([
+      api(`/api/scans/${scanId}`),
+      api(`/api/scans/${scanId}/tasks`),
+      api(`/api/scans/${scanId}/artifacts`),
+      api(`/api/scans/${scanId}/findings`),
+      api(`/api/reviews?scan_id=${encodeURIComponent(scanId)}`),
+      api(`/api/scans/${scanId}/events`),
+    ]);
+  renderControlScan(scan);
+  renderControlTasks(tasksPayload.tasks || []);
+  renderControlArtifacts(artifactsPayload.artifacts || []);
+  renderControlReviews(reviewsPayload.reviews || []);
+  renderControlEvents(eventsPayload.events || []);
+  controlFindings = (findingsPayload.findings || []).map((finding) => ({
+    ...finding,
+    confidence: finding.static_confidence,
+    evidence: `Evidence Artifacts: ${(finding.evidence_artifact_ids || []).join(", ")}`,
+    data_flow: [...(finding.source_node_ids || []), ...(finding.sink_node_ids || [])].join(" → "),
+    review_status: finding.static_review?.status,
+    _workspace: `${projectForScan(scanId)?.name || "project"}/${shortId(scanId)}`,
+    _control: true,
+  }));
+  await loadVerificationCenter(
+    projectForScan(scanId)?.id || selectedControlProjectId,
+    controlFindings
+  );
+  if (currentView === "findings") {
+    allFindings = controlFindings;
+    renderAllFindings();
+  }
+}
+
+async function loadControlPlane({ quiet = false } = {}) {
+  try {
+    const payload = await api("/api/projects");
+    const projects = payload.projects || [];
+    renderProjects(projects);
+    if (!projects.length) {
+      await loadControlScan(null);
+      return;
+    }
+    let project = projects.find((item) => item.id === selectedControlProjectId);
+    if (!project) project = projects[projects.length - 1];
+    selectedControlProjectId = project.id;
+    const scans = project.scans || [];
+    const selected = scans.find((scan) => scan.id === selectedControlScanId) || scans[scans.length - 1];
+    await loadControlScan(selected?.id || null);
+  } catch (error) {
+    if (!quiet && !String(error.message).includes("Control Store")) {
+      showToast("无法读取持久化控制面", error.message, true);
+    }
+    renderProjects([]);
+    selectedControlScanId = null;
+    renderControlScan(null);
+    renderControlTasks([]);
+    renderControlArtifacts([]);
+    renderControlEvents([]);
+  }
 }
 
 function reviewStatusLabel(status) {
@@ -440,8 +915,19 @@ function showFinding(finding) {
   setText("#drawer-title", finding.title || "未命名发现");
   setText("#drawer-id", finding.id || "无稳定 ID");
   setText("#drawer-analyzer", finding.analyzer || "unknown");
-  setText("#drawer-confidence", confidenceLabel(finding.confidence));
+  setText("#drawer-confidence", confidenceLabel(finding.static_confidence || finding.confidence));
   setText("#drawer-class", finding.vuln_class || "unknown");
+  const verification = finding.dynamic_verification;
+  setText(
+    "#drawer-verification",
+    verification
+      ? `${verification.status}${
+          verification.missing_fields?.length
+            ? ` · 缺少 ${verification.missing_fields.join(", ")}`
+            : ""
+        }`
+      : "未配置"
+  );
   setText("#drawer-rationale", finding.rationale || "暂无风险说明。");
   setText("#drawer-location", location ? `${location.file}:${location.line}` : "未提供代码位置");
   setText("#drawer-remediation", finding.remediation || "暂无修复建议。");
@@ -459,6 +945,17 @@ function showFinding(finding) {
   dataFlow.append(item);
   const falsePositiveButton = document.querySelector("#mark-false-positive");
   const confirmButton = document.querySelector("#confirm-finding");
+  if (finding._control) {
+    falsePositiveButton.disabled = true;
+    falsePositiveButton.textContent = "请在审核队列处理";
+    confirmButton.disabled = !finding.graph_slice_url;
+    confirmButton.innerHTML =
+      '<svg><use href="#i-branch"></use></svg>查看有限 Graph Slice';
+    openLayer(findingDrawer);
+    return;
+  }
+  falsePositiveButton.disabled = false;
+  confirmButton.disabled = false;
   falsePositiveButton.textContent =
     finding.review_status === "false_positive" ? "取消误报标记" : "标记误报";
   confirmButton.innerHTML =
@@ -1010,6 +1507,37 @@ async function selectWorkspace(workspaceName, navigate = false) {
 
 async function loadAllFindings(preferredWorkspace = findingsWorkspaceScope) {
   const requestId = ++findingsLoadRequest;
+  if (selectedControlScanId) {
+    try {
+      const payload = await api(`/api/scans/${selectedControlScanId}/findings`);
+      if (requestId !== findingsLoadRequest) return;
+      controlFindings = (payload.findings || []).map((finding) => ({
+        ...finding,
+        confidence: finding.static_confidence,
+        evidence: `Evidence Artifacts: ${(finding.evidence_artifact_ids || []).join(", ")}`,
+        data_flow: [...(finding.source_node_ids || []), ...(finding.sink_node_ids || [])].join(" → "),
+        review_status: finding.static_review?.status,
+        _workspace: `${projectForScan(selectedControlScanId)?.name || "project"}/${shortId(
+          selectedControlScanId
+        )}`,
+        _control: true,
+      }));
+      allFindings = controlFindings;
+      const workspaceFilter = document.querySelector("#all-workspace-filter");
+      workspaceFilter.replaceChildren();
+      const option = document.createElement("option");
+      option.value = "all";
+      option.textContent = "当前持久化 Scan";
+      workspaceFilter.append(option);
+      findingsWorkspaceScope = "all";
+      renderAllFindings();
+      return;
+    } catch (error) {
+      if (requestId !== findingsLoadRequest) return;
+      showToast("无法读取持久化 Finding", error.message, true);
+      return;
+    }
+  }
   try {
     const payload = await api("/api/findings");
     if (requestId !== findingsLoadRequest) return;
@@ -1077,6 +1605,9 @@ function showView(view, updateHash = true) {
   if (window.innerWidth <= 840) setSidebar(false);
   if (view === "findings") loadAllFindings();
   if (view === "settings") loadSettings();
+  if (["projects", "scans", "reviews", "reports", "events"].includes(view)) {
+    loadControlPlane({ quiet: true });
+  }
   const heading = target.querySelector("h1");
   if (heading) {
     heading.tabIndex = -1;
@@ -1099,6 +1630,7 @@ async function refreshDashboard({ quiet = false } = {}) {
       }
     }
     renderDashboard(data);
+    await loadControlPlane({ quiet: true });
     if (currentView === "findings") loadAllFindings();
     const running = (data.workspaces || []).some((workspace) => workspace.status === "running");
     refreshTimer = setTimeout(() => refreshDashboard({ quiet: true }), running ? 3000 : 15000);
@@ -1174,6 +1706,21 @@ async function handleWorkspaceAction(button) {
 
 async function reviewCurrentFinding(nextStatus) {
   if (!currentDrawerFinding) return;
+  if (currentDrawerFinding._control) {
+    if (!currentDrawerFinding.graph_slice_url) return;
+    try {
+      const graph = await api(currentDrawerFinding.graph_slice_url);
+      closeLayer(findingDrawer);
+      openArtifact(
+        `${currentDrawerFinding.title} · Graph Slice`,
+        "Bounded Security Graph",
+        JSON.stringify(graph, null, 2)
+      );
+    } catch (error) {
+      showToast("无法读取 Graph Slice", error.message, true);
+    }
+    return;
+  }
   const workspace = currentDrawerFinding._workspace || selectedWorkspace?.workspace;
   if (!workspace) {
     showToast("无法保存审阅", "当前发现没有关联工作区。", true);
@@ -1345,10 +1892,18 @@ scanForm.addEventListener("submit", async (event) => {
   submit.disabled = true;
   submit.textContent = "正在创建工作区…";
   try {
-    await api("/api/scans", { method: "POST", body: JSON.stringify(payload) });
+    const endpoint = selectedControlProjectId
+      ? `/api/projects/${selectedControlProjectId}/scans`
+      : "/api/scans";
+    await api(endpoint, { method: "POST", body: JSON.stringify(payload) });
     closeLayer(scanModal);
     scanForm.elements.disclosure_acknowledged.checked = false;
-    showToast("扫描任务已创建", `${payload.workspace} 已进入代码图构建阶段。`);
+    showToast(
+      "扫描任务已创建",
+      selectedControlProjectId
+        ? `${payload.workspace} 将由 V2 Local Executor 持久化执行。`
+        : `${payload.workspace} 已进入 Legacy 代码图构建阶段。`
+    );
     await refreshDashboard({ quiet: true });
   } catch (error) {
     showToast("无法创建扫描", error.message, true);
@@ -1398,6 +1953,218 @@ document.querySelectorAll("[data-view-target]").forEach((item) => {
   });
 });
 
+document.querySelector("#projects-body").addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-control-project]");
+  if (!button) return;
+  selectedControlProjectId = button.dataset.controlProject;
+  try {
+    const project = await api(`/api/projects/${selectedControlProjectId}`);
+    const scans = project.scans || [];
+    const scanId = button.dataset.controlScan || scans[scans.length - 1]?.id;
+    await loadControlScan(scanId || null);
+    showView(scanId ? "scans" : "projects");
+  } catch (error) {
+    showToast("无法打开项目", error.message, true);
+  }
+});
+
+document.querySelector("#control-artifacts-body").addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-control-artifact]");
+  if (!button) return;
+  try {
+    const artifact = await api(`/api/artifacts/${button.dataset.controlArtifact}`);
+    const preview = artifact.preview?.available
+      ? typeof artifact.preview.value === "string"
+        ? artifact.preview.value
+        : JSON.stringify(artifact.preview.value, null, 2)
+      : artifact.preview?.reason || "该 Artifact 不允许预览。";
+    openArtifact(
+      artifact.artifact_type,
+      `${artifact.producer_plugin_id}@${artifact.producer_plugin_version} · ${artifact.content_hash}`,
+      preview
+    );
+  } catch (error) {
+    showToast("无法预览 Artifact", error.message, true);
+  }
+});
+
+document.querySelector("#review-queue").addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-control-review]");
+  if (!button) return;
+  const reviewer = window.prompt("审核人（必填）", "local-reviewer");
+  if (!reviewer) return;
+  const reason = window.prompt("审核理由（必填）", "已核对当前静态 Artifact 与 subject hash。");
+  if (!reason) return;
+  try {
+    await api(
+      `/api/reviews/${button.dataset.controlReview}/${button.dataset.reviewDecision}`,
+      {
+        method: "POST",
+        body: JSON.stringify({ reviewer, reason }),
+      }
+    );
+    showToast("静态审核已记录", "审核不会触发或代表动态验证。");
+    await loadControlPlane({ quiet: true });
+  } catch (error) {
+    showToast("无法提交审核", error.message, true);
+  }
+});
+
+document.querySelector("#verification-queue").addEventListener("click", async (event) => {
+  const planButton = event.target.closest("[data-verification-plan]");
+  if (planButton) {
+    try {
+      await api(
+        `/api/verification/plans/${planButton.dataset.verificationPlan}/approval`,
+        { method: "POST", body: JSON.stringify({}) }
+      );
+      showToast("验证计划已进入审批", "请求审批不会执行任何网络请求。");
+      await loadControlPlane({ quiet: true });
+    } catch (error) {
+      showToast("无法请求验证审批", error.message, true);
+    }
+    return;
+  }
+
+  const approvalButton = event.target.closest("[data-verification-approval]");
+  if (!approvalButton) return;
+  const reviewer = window.prompt("计划审核人（必填）", "local-reviewer");
+  if (!reviewer) return;
+  const reason = window.prompt(
+    "计划审核理由（必填）",
+    "已核对环境、身份引用、预算、风险等级与 plan hash。"
+  );
+  if (!reason) return;
+  try {
+    await api(
+      `/api/verification/approvals/${approvalButton.dataset.verificationApproval}/${approvalButton.dataset.verificationDecision}`,
+      {
+        method: "POST",
+        body: JSON.stringify({ reviewer, reason }),
+      }
+    );
+    showToast("验证计划审批已记录", "批准后仍需手动输入测试资源并执行。");
+    await loadControlPlane({ quiet: true });
+  } catch (error) {
+    showToast("无法提交验证审批", error.message, true);
+  }
+});
+
+document.querySelector("#verification-queue").addEventListener("submit", async (event) => {
+  const form = event.target.closest("[data-verification-execute-form]");
+  if (!form) return;
+  event.preventDefault();
+  const button = form.querySelector("button[type='submit']");
+  const resourceId = new FormData(form).get("resource_id")?.toString().trim();
+  if (!resourceId) {
+    showToast("缺少测试资源", "请输入已准备的测试 fixture ID。", true);
+    return;
+  }
+  button.disabled = true;
+  button.textContent = "正在执行…";
+  try {
+    const result = await api(
+      `/api/verification/plans/${form.dataset.verificationExecuteForm}/execute`,
+      {
+        method: "POST",
+        body: JSON.stringify({ test_data: { resource_id: resourceId } }),
+      }
+    );
+    showToast(
+      "只读验证已完成",
+      `结论：${result.attempt?.conclusion || "inconclusive"}；证据 ${result.evidence?.length || 0} 条。`
+    );
+    await loadControlPlane({ quiet: true });
+  } catch (error) {
+    showToast("只读验证未执行", `${error.message}。请检查审批、环境、身份和预算。`, true);
+    button.disabled = false;
+    button.textContent = "执行只读验证";
+  }
+});
+
+document.querySelector("#control-scan-resume").addEventListener("click", async () => {
+  if (!selectedControlScanId) return;
+  try {
+    await api(`/api/scans/${selectedControlScanId}/resume`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    showToast("恢复请求已提交", "真实状态将由 Control Store 中的 Scan/Task 更新。");
+    await loadControlPlane({ quiet: true });
+  } catch (error) {
+    showToast("无法恢复 Scan", error.message, true);
+  }
+});
+
+document.querySelector("#control-scan-cancel").addEventListener("click", async () => {
+  if (!selectedControlScanId) return;
+  if (!window.confirm("确认取消当前持久化 Scan？")) return;
+  try {
+    await api(`/api/scans/${selectedControlScanId}/cancel`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    showToast("取消请求已提交", "取消状态将持久化到 Control Store。");
+    await loadControlPlane({ quiet: true });
+  } catch (error) {
+    showToast("无法取消 Scan", error.message, true);
+  }
+});
+
+document.querySelector("#graph-slice-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!selectedControlScanId) {
+    showToast("尚未选择 Scan", "请先在项目页面选择一个历史扫描。", true);
+    return;
+  }
+  const data = new FormData(event.currentTarget);
+  const query = new URLSearchParams({
+    seed_id: String(data.get("seed_id")),
+    radius: String(data.get("radius")),
+    max_nodes: String(data.get("max_nodes")),
+  });
+  try {
+    const graph = await api(`/api/scans/${selectedControlScanId}/graph/slice?${query}`);
+    setText("#graph-slice-output", JSON.stringify(graph, null, 2));
+  } catch (error) {
+    setText("#graph-slice-output", `无法读取切片：${error.message}`);
+  }
+});
+
+document.querySelector("#project-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const data = new FormData(form);
+  let defaultConfig;
+  try {
+    defaultConfig = JSON.parse(String(data.get("default_config") || "{}"));
+  } catch {
+    showToast("默认配置不是有效 JSON", "请检查配置文本。", true);
+    return;
+  }
+  const submit = form.querySelector('[type="submit"]');
+  submit.disabled = true;
+  try {
+    const project = await api("/api/projects", {
+      method: "POST",
+      body: JSON.stringify({
+        name: data.get("name"),
+        repository_path: data.get("repository_path"),
+        default_config: defaultConfig,
+      }),
+    });
+    selectedControlProjectId = project.id;
+    form.reset();
+    form.elements.default_config.value = '{"analysisMode":"v2"}';
+    showToast("项目已登记", "仓库与默认配置已写入 Control Store。");
+    await loadControlPlane({ quiet: true });
+  } catch (error) {
+    showToast("无法登记项目", error.message, true);
+  } finally {
+    submit.disabled = false;
+  }
+});
+
 document.querySelector("#all-findings-body").addEventListener("keydown", (event) => {
   if (event.key !== "Enter" && event.key !== " ") return;
   const row = event.target.closest("[data-finding-id]");
@@ -1438,9 +2205,16 @@ document.querySelector("#confirm-finding").addEventListener("click", () => {
   reviewCurrentFinding("confirmed");
 });
 
-const initialView = ["overview", "scans", "reviews", "findings", "reports", "settings"].includes(
-  location.hash.slice(1)
-)
+const initialView = [
+  "projects",
+  "overview",
+  "scans",
+  "reviews",
+  "findings",
+  "reports",
+  "events",
+  "settings",
+].includes(location.hash.slice(1))
   ? location.hash.slice(1)
   : "overview";
 showView(initialView, false);

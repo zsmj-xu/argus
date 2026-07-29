@@ -4,10 +4,18 @@ import json
 import sys
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 import pytest
 
-from argus.web import APIError, ConsoleService, Job, build_start_command
+from argus.web import (
+    APIError,
+    ArgusConsoleHandler,
+    ConsoleService,
+    Job,
+    build_project_scan_command,
+    build_start_command,
+)
 from argus.orchestration.checkpoints import REVIEW_ENRICHMENT, make_checkpointer
 from argus.orchestration.pipeline import build_pipeline
 from argus.orchestration.state import make_initial_state
@@ -54,6 +62,25 @@ def test_build_start_command_requires_disclosure_acknowledgement(tmp_path: Path)
         )
 
 
+def test_security_graph_api_routes_are_scan_scoped_and_bounded() -> None:
+    scan_id = UUID("12345678-1234-5678-1234-567812345678")
+
+    assert ArgusConsoleHandler._scan_graph_route(f"/api/scans/{scan_id}/graph/nodes") == (scan_id, "nodes", None)
+    assert ArgusConsoleHandler._scan_graph_route(f"/api/scans/{scan_id}/graph/nodes/sir%3Aroute%3Aabc") == (
+        scan_id,
+        "nodes",
+        "sir:route:abc",
+    )
+    assert ArgusConsoleHandler._scan_graph_route(f"/api/scans/{scan_id}/graph/slice") == (scan_id, "slice", None)
+    with pytest.raises(APIError, match="UUID"):
+        ArgusConsoleHandler._scan_graph_route("/api/scans/not-a-uuid/graph/nodes")
+    with pytest.raises(APIError, match="整数"):
+        ArgusConsoleHandler._query_int(
+            {"max_nodes": ["unbounded"]},
+            "max_nodes",
+        )
+
+
 def test_build_start_command_uses_argv_not_shell(tmp_path: Path) -> None:
     workspace, command = build_start_command(
         {
@@ -93,6 +120,32 @@ def test_build_start_command_adds_safe_advanced_llm_settings(tmp_path: Path) -> 
     assert "business-flow.max_tokens=65536" in command
     assert "invariant.max_tokens=65536" in command
     assert "authz.max_tokens=65536" in command
+
+
+def test_project_scan_command_uses_v2_and_persisted_defaults(
+    tmp_path: Path,
+) -> None:
+    workspace, command = build_project_scan_command(
+        {
+            "repository_path": str(tmp_path),
+            "default_config": {"strict_outputs": True},
+        },
+        {
+            "workspace": "v2-control-scan",
+            "source_mode": "stripped",
+            "analysis_mode": "compare",
+            "analyzers": ["authz"],
+            "enrichment_analyzers": ["business-flow"],
+            "disclosure_acknowledged": True,
+        },
+        {"authz", "business-flow"},
+    )
+
+    assert workspace == "v2-control-scan"
+    assert command[:4] == [sys.executable, "-m", "argus.cli", "scan"]
+    assert command[command.index("--engine") + 1] == "v2"
+    assert "strict_outputs=true" in command
+    assert "analysisMode=compare" in command
 
 
 @pytest.mark.parametrize("output_token_limit", [4096, 393217, "many"])
@@ -160,6 +213,20 @@ def test_failed_job_with_checkpoint_is_resumable(tmp_path: Path) -> None:
 
     assert summary["status"] == "resumable"
     assert summary["job"]["status"] == "failed"
+
+
+def test_running_job_handle_does_not_override_persistent_workspace_state(
+    tmp_path: Path,
+) -> None:
+    launcher = FakeLauncher()
+    workspace = tmp_path / "runs" / "transient-handle"
+    workspace.mkdir(parents=True)
+    launcher.launch("transient-handle", "start", ["argus", "start"])
+
+    summary = _service(tmp_path, launcher).workspace_summary("transient-handle")
+
+    assert summary["job"]["status"] == "running"
+    assert summary["status"] == "created"
 
 
 def test_create_scan_rejects_existing_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

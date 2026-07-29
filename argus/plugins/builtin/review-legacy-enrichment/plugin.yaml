@@ -1,0 +1,21 @@
+apiVersion: argus.security/v2
+kind: review_gate
+metadata:
+  id: review.legacy-enrichment
+  version: 1.0.0
+entrypoint: argus.plugins.legacy_runtime:review_gate_runtime
+consumes:
+  - capability: legacy.enrichment.aggregate.v1
+    required: true
+produces:
+  - capability: legacy.enrichment.reviewed.v1
+    artifactType: legacy.enrichment.reviewed
+    schemaVersion: "1.0"
+permissions:
+  source: none
+  network: none
+  subprocess: none
+  secrets: none
+runtime:
+  isolation: process
+  timeoutSeconds: 300

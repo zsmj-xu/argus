@@ -1,0 +1,21 @@
+apiVersion: argus.security/v2
+kind: reporter
+metadata:
+  id: reporter.markdown
+  version: 1.0.0
+entrypoint: argus.plugins.legacy_runtime:reporter_runtime
+consumes:
+  - capability: legacy.findings.reviewed.v1
+    required: true
+produces:
+  - capability: legacy.report.markdown.v1
+    artifactType: report.markdown
+    schemaVersion: "1.0"
+permissions:
+  source: none
+  network: none
+  subprocess: none
+  secrets: none
+runtime:
+  isolation: process
+  timeoutSeconds: 300

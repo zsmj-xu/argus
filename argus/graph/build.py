@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import shutil
 import subprocess
 
 CODEGRAPH_BIN = "/opt/homebrew/bin/codegraph"
+CODEGRAPH_PROVIDER_ID = "graph.codegraph"
 
 
 def _resolve_binary() -> str:
@@ -15,6 +17,16 @@ def _resolve_binary() -> str:
     if binary is None:
         raise FileNotFoundError("codegraph CLI not found; install it (expected at /opt/homebrew/bin/codegraph)")
     return binary
+
+
+def codegraph_provider_version() -> str:
+    """Identify the exact provider binary without trusting a mutable version label."""
+    binary = _resolve_binary()
+    digest = hashlib.sha256()
+    with open(binary, "rb") as handle:
+        while chunk := handle.read(1024 * 1024):
+            digest.update(chunk)
+    return f"sha256:{digest.hexdigest()}"
 
 
 def build_graph(repo_path: str) -> str:

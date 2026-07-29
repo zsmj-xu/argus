@@ -1,4 +1,4 @@
-# Argus Console UI Prototype
+# Argus Web Console
 
 This is the dependency-free browser client for Argus Console.
 
@@ -10,13 +10,15 @@ uv run argus web
 
 Then open `http://127.0.0.1:8765`.
 
-The prototype demonstrates:
+The console provides:
 
-- scan progress and human-review checkpoints;
-- risk metrics and analyzer coverage;
-- finding filters and an evidence detail drawer;
-- a new-scan configuration dialog;
+- Control Store-backed Project, Scan, Task DAG, Artifact, Finding, Review, and Event views;
+- bounded Security Graph node and Graph Slice inspection;
+- static review decisions and separately authorized verification workflows;
+- scan progress, finding filters, evidence details, and a new-scan dialog;
 - dark/light themes and responsive navigation.
 
-The console reads local workspaces and can invoke the Argus CLI. Starting a scan
-requires an explicit source-disclosure acknowledgement.
+`runs/control.db` is the V2 state source of truth. Legacy Workspace files are
+compatibility projections only. Starting a scan requires an explicit
+source-disclosure acknowledgement. The server has no remote authentication and
+refuses non-loopback binds.

@@ -180,10 +180,21 @@ def _render_finding(finding: Finding, index: int, repo_path: str, report_dir: st
     severity = _severity_label(_as_str(finding["severity"]))
     confidence = _confidence_label(_as_str(finding["confidence"]))
 
+    finding_data = dict(finding)
+    static_confidence = finding_data.get("static_confidence")
+    verification_status = finding_data.get("verification_status")
+    confidence_line = (
+        f"**风险等级：** {severity} · **静态置信度：** "
+        f"{_confidence_label(_as_str(static_confidence))} · "
+        f"**验证状态：** {_verification_label(_as_str(verification_status))}"
+        if static_confidence is not None and verification_status is not None
+        else f"**风险等级：** {severity} · **置信度：** {confidence}"
+    )
+
     lines = [
         f"#### {index}. {finding['title']}",
         "",
-        f"**风险等级：** {severity} · **置信度：** {confidence}",
+        confidence_line,
         "",
         f"- **漏洞类别：** {finding['vuln_class']}",
         f"- **分析器：** {finding['analyzer']}",
@@ -208,6 +219,17 @@ def _render_finding(finding: Finding, index: int, repo_path: str, report_dir: st
     lines.extend(["**修复建议：**", "", remediation or "_未提供。_", ""])
 
     return lines
+
+
+def _verification_label(status: str) -> str:
+    labels = {
+        "unverified": "未验证",
+        "static_supported": "静态支持",
+        "candidate": "候选",
+        "rejected_static": "静态拒绝",
+    }
+    normalized = status.strip().lower()
+    return labels.get(normalized, status.strip() or "未知")
 
 
 def render_report(findings: list[Finding], state: ArgusState) -> str:

@@ -3,7 +3,7 @@ import os
 
 import pytest
 
-from argus.llm import AuditedLLM, LLMOutputTruncatedError
+from argus.llm import AuditLevel, AuditedLLM, LLMOutputTruncatedError
 from argus.llm.client import load_llm_environment
 
 
@@ -79,11 +79,16 @@ def test_complete_returns_text_and_writes_audit(tmp_path):
     lines = audit_path.read_text().strip().splitlines()
     assert len(lines) == 1
     record = json.loads(lines[0])
-    assert record["system"] == "you are a scanner"
-    assert record["prompt"] == "find bugs"
-    assert record["response"] == "hello from compatible model"
+    assert "system" not in record
+    assert "prompt" not in record
+    assert "response" not in record
+    assert record["audit_level"] == "redacted"
+    assert record["content"]["system"]["chars"] == len("you are a scanner")
+    assert record["content"]["prompt"]["chars"] == len("find bugs")
+    assert record["content"]["response"]["chars"] == len("hello from compatible model")
+    assert len(record["content"]["prompt"]["sha256"]) == 64
     assert record["model"] == "example-model"
-    assert record["base_url"] == "https://llm.example.test/v1"
+    assert record["base_url"] == "https://llm.example.test"
     assert record["finish_reason"] == "stop"
     assert record["usage"] == {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
     assert record["timestamp"]
@@ -116,9 +121,33 @@ def test_truncated_response_is_audited_then_rejected(tmp_path, monkeypatch):
 
     record = json.loads((tmp_path / "truncated" / "audit" / "llm.jsonl").read_text().strip())
     assert record["finish_reason"] == "length"
-    assert record["response"] == '{"findings": ['
+    assert record["content"]["response"]["chars"] == len('{"findings": [')
     assert record["attempt"] == 1
     assert record["max_tokens"] == 32768
+
+
+def test_full_audit_requires_explicit_level(tmp_path):
+    fake = _FakeClient("full response")
+    llm = AuditedLLM(
+        api_key="test-key",
+        base_url="https://user:password@llm.example.test/v1?token=secret",
+        model="example-model",
+        workspace="full",
+        client=fake,
+        runs_root=str(tmp_path),
+        audit_level=AuditLevel.FULL,
+    )
+
+    llm.complete(system="full system", prompt="full prompt")
+
+    record = json.loads((tmp_path / "full" / "audit" / "llm.jsonl").read_text())
+    assert record["audit_level"] == "full"
+    assert record["system"] == "full system"
+    assert record["prompt"] == "full prompt"
+    assert record["response"] == "full response"
+    assert record["base_url"] == "https://llm.example.test"
+    assert "password" not in json.dumps(record)
+    assert "token=secret" not in json.dumps(record)
 
 
 def test_truncated_response_retries_with_larger_budget(tmp_path, monkeypatch):

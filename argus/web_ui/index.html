@@ -81,6 +81,10 @@
 
         <nav class="main-nav">
           <p class="nav-label">工作台</p>
+          <a class="nav-item" href="#projects" data-view-target="projects">
+            <svg><use href="#i-branch"></use></svg><span>项目</span>
+            <span class="nav-count" id="project-nav-count">—</span>
+          </a>
           <a class="nav-item active" href="#overview" data-view-target="overview" aria-current="page">
             <svg><use href="#i-grid"></use></svg><span>总览</span>
           </a>
@@ -96,7 +100,10 @@
             <svg><use href="#i-shield"></use></svg><span>漏洞发现</span>
           </a>
           <a class="nav-item" href="#reports" data-view-target="reports">
-            <svg><use href="#i-report"></use></svg><span>报告</span>
+            <svg><use href="#i-report"></use></svg><span>产物</span>
+          </a>
+          <a class="nav-item" href="#events" data-view-target="events">
+            <svg><use href="#i-clock"></use></svg><span>事件</span>
           </a>
         </nav>
 
@@ -150,6 +157,36 @@
         </header>
 
         <main id="main-content">
+          <section class="app-view" data-view="projects" hidden aria-labelledby="projects-page-title">
+            <div class="page-heading view-heading">
+              <div>
+                <p class="eyebrow">Persistent Control Store</p>
+                <h1 id="projects-page-title">项目</h1>
+                <p>仓库、默认配置与历史扫描均来自持久化 Control Store。</p>
+              </div>
+            </div>
+            <div class="control-grid">
+              <section class="panel">
+                <div class="panel-header"><div><h2>已登记项目</h2><p id="projects-summary">正在读取…</p></div></div>
+                <div class="table-wrap">
+                  <table>
+                    <thead><tr><th>项目</th><th>仓库</th><th>扫描</th><th>最近状态</th><th>操作</th></tr></thead>
+                    <tbody id="projects-body"></tbody>
+                  </table>
+                </div>
+              </section>
+              <section class="panel control-form-panel">
+                <div class="panel-header"><div><h2>登记项目</h2><p>配置中禁止保存 API Key 或凭据。</p></div></div>
+                <form id="project-form" class="control-form">
+                  <label>项目名称<input name="name" required maxlength="255" /></label>
+                  <label>仓库绝对路径<input name="repository_path" required /></label>
+                  <label>默认配置（JSON）<textarea name="default_config" rows="6">{"analysisMode":"v2"}</textarea></label>
+                  <button class="button primary" type="submit"><svg><use href="#i-plus"></use></svg>登记项目</button>
+                </form>
+              </section>
+            </div>
+          </section>
+
           <div class="app-view active" data-view="overview">
           <section class="page-heading">
             <div>
@@ -400,7 +437,41 @@
                 <button class="button primary" data-open-scan><svg><use href="#i-plus"></use></svg>新建扫描</button>
               </div>
             </div>
+            <section class="panel control-scan-overview" id="control-scan-overview">
+              <div class="panel-header">
+                <div><h2 id="control-scan-title">持久化 Scan Overview</h2><p id="control-scan-meta">选择一个项目扫描。</p></div>
+                <div class="table-row-actions">
+                  <button class="mini-button" id="control-scan-resume" disabled>恢复</button>
+                  <button class="mini-button" id="control-scan-cancel" disabled>取消</button>
+                </div>
+              </div>
+              <div class="control-summary" id="control-scan-summary"></div>
+              <div class="control-state-separation">
+                <div><small>人工静态审核</small><strong id="control-static-review">—</strong></div>
+                <div><small>动态验证规划</small><strong id="control-dynamic-verification">M8 默认关闭</strong></div>
+              </div>
+            </section>
             <section class="panel">
+              <div class="panel-header"><div><h2>Task DAG</h2><p>依赖、状态、耗时、输入与输出 Artifact。</p></div></div>
+              <div class="table-wrap">
+                <table>
+                  <thead><tr><th>任务</th><th>依赖</th><th>状态</th><th>耗时</th><th>输入</th><th>输出</th><th>错误</th></tr></thead>
+                  <tbody id="control-tasks-body"></tbody>
+                </table>
+              </div>
+            </section>
+            <section class="panel">
+              <div class="panel-header"><div><h2>Graph Explorer</h2><p>仅请求有限 Graph Slice，不渲染整图。</p></div></div>
+              <form id="graph-slice-form" class="graph-slice-form">
+                <label>Seed node ID<input name="seed_id" placeholder="sir:route:..." required /></label>
+                <label>半径<input name="radius" type="number" min="0" max="8" value="2" /></label>
+                <label>节点上限<input name="max_nodes" type="number" min="1" max="500" value="60" /></label>
+                <button class="button secondary" type="submit">加载切片</button>
+              </form>
+              <pre class="control-json" id="graph-slice-output">选择 Finding 或输入 seed node ID。</pre>
+            </section>
+            <section class="panel">
+              <div class="panel-header"><div><h2>Legacy Workspace 兼容视图</h2><p>仅用于旧 Pipeline 产物，不作为 V2 状态事实来源。</p></div></div>
               <div class="table-wrap">
                 <table class="workspace-table">
                   <thead>
@@ -428,6 +499,16 @@
               </div>
             </div>
             <div class="review-queue" id="review-queue"></div>
+            <section class="panel verification-center" aria-labelledby="verification-center-title">
+              <div class="panel-header">
+                <div>
+                  <h2 id="verification-center-title">动态验证审批中心</h2>
+                  <p id="verification-profile-summary">M9 仅允许人工批准后，在测试环境执行只读 HTTP 验证。</p>
+                </div>
+                <span class="nav-count attention" id="verification-approval-count">0</span>
+              </div>
+              <div class="review-queue" id="verification-queue"></div>
+            </section>
           </section>
 
           <section class="app-view" data-view="findings" hidden aria-labelledby="findings-page-title">
@@ -489,12 +570,39 @@
           <section class="app-view" data-view="reports" hidden aria-labelledby="reports-page-title">
             <div class="page-heading view-heading">
               <div>
-                <p class="eyebrow">扫描交付物</p>
-                <h1 id="reports-page-title">报告中心</h1>
-                <p>预览或下载已经生成的 Markdown 安全报告。</p>
+                <p class="eyebrow">Content-addressed Artifact Store</p>
+                <h1 id="reports-page-title">Artifacts</h1>
+                <p>查看类型、producer、schema、hash，并安全预览或下载。</p>
               </div>
             </div>
+            <section class="panel">
+              <div class="table-wrap">
+                <table>
+                  <thead><tr><th>Artifact</th><th>类型 / Capability</th><th>Producer</th><th>Schema</th><th>Hash / 大小</th><th>操作</th></tr></thead>
+                  <tbody id="control-artifacts-body"></tbody>
+                </table>
+              </div>
+            </section>
+            <div class="panel-header"><div><h2>Legacy Markdown 报告</h2><p>Workspace 兼容投影</p></div></div>
             <div class="report-grid" id="reports-list"></div>
+          </section>
+
+          <section class="app-view" data-view="events" hidden aria-labelledby="events-page-title">
+            <div class="page-heading view-heading">
+              <div>
+                <p class="eyebrow">Append-only audit trail</p>
+                <h1 id="events-page-title">Events / Logs</h1>
+                <p>结构化事件来自 Control Store；不会返回 Prompt、凭据或 API Key。</p>
+              </div>
+            </div>
+            <section class="panel">
+              <div class="table-wrap">
+                <table>
+                  <thead><tr><th>序号 / 时间</th><th>事件</th><th>级别</th><th>Task / Finding</th><th>安全载荷</th></tr></thead>
+                  <tbody id="control-events-body"></tbody>
+                </table>
+              </div>
+            </section>
           </section>
 
           <section class="app-view" data-view="settings" hidden aria-labelledby="settings-page-title">
@@ -549,7 +657,7 @@
                 <label class="field span-2">
                   <span>仓库绝对路径 <b aria-hidden="true">*</b></span>
                   <input name="repo" placeholder="/absolute/path/to/repository" required />
-                  <small>扫描会在目标目录写入 <span class="mono">.codegraph/</span></small>
+                  <small>扫描从隔离的 SourceSnapshot 构图，不会向目标目录写入 <span class="mono">.codegraph/</span></small>
                 </label>
                 <label class="field">
                   <span>工作区名称 <b aria-hidden="true">*</b></span>
@@ -778,6 +886,7 @@
             <div><small>置信度</small><strong id="drawer-confidence">高</strong></div>
             <div><small>漏洞类别</small><strong id="drawer-class">Authentication</strong></div>
             <div><small>状态</small><strong>待确认</strong></div>
+            <div><small>动态验证规划</small><strong id="drawer-verification">默认关闭</strong></div>
           </div>
           <section class="detail-section">
             <h3>为什么这是风险</h3>

@@ -18,7 +18,25 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Protocol
 from urllib.parse import parse_qs, unquote, urlparse
+from uuid import UUID
 
+from argus.artifacts.store import ArtifactStore
+from argus.control.db import Database, control_db_path
+from argus.control.repositories import Repositories
+from argus.control_plane.service import (
+    ArtifactAccessDenied,
+    ArtifactContent,
+    ControlPlaneInputError,
+    ControlPlaneService,
+)
+from argus.domain.enums import ReviewStatus
+from argus.domain.errors import (
+    ArtifactCorruptionError,
+    ConflictError,
+    InvalidTransitionError,
+    NotFoundError,
+    SchemaValidationError,
+)
 from argus.llm.client import (
     DEFAULT_MAX_OUTPUT_TOKENS,
     DEFAULT_MAX_TOKENS,
@@ -31,6 +49,11 @@ from argus.llm.client import (
 from argus.orchestration.registry import discover_analyzers
 from argus.orchestration.checkpoints import make_checkpointer
 from argus.orchestration.pipeline import build_pipeline
+from argus.security_ir.query import QueryLimitError
+from argus.security_ir.service import SecurityGraphService
+from argus.security_ir.store import SecurityGraphError
+from argus.verification.approvals import VerificationPolicyDenied
+from argus.verification.models import ApprovalDecision
 
 RUNS_ROOT = "runs"
 MAX_REQUEST_BYTES = 1_000_000
@@ -81,7 +104,7 @@ class JobLauncher(Protocol):
 
 
 class JobManager:
-    """Launches one subprocess per workspace and records its terminal status."""
+    """Own subprocess handles; persistent Scan/Task state remains authoritative."""
 
     def __init__(self, project_root: Path, runs_root: Path) -> None:
         self.project_root = project_root
@@ -263,6 +286,62 @@ def build_start_command(payload: dict[str, Any], available_analyzers: set[str]) 
     return workspace, command
 
 
+def build_project_scan_command(
+    project: dict[str, Any],
+    payload: dict[str, Any],
+    available_analyzers: set[str],
+) -> tuple[str, list[str]]:
+    """Build an argv-only V2 command for a persisted Project."""
+    if payload.get("disclosure_acknowledged") is not True:
+        raise APIError(HTTPStatus.BAD_REQUEST, "请先确认你有权向配置的 LLM 披露所选源码上下文")
+    workspace = _validate_workspace(payload.get("workspace"))
+    repo = _validate_repo(project.get("repository_path"))
+    source_mode = _validate_source_mode(payload.get("source_mode", "stripped"))
+    vuln = _validate_analyzers(payload.get("analyzers", ["authz"]), available_analyzers)
+    enrichment = _validate_analyzers(payload.get("enrichment_analyzers", []), available_analyzers)
+    analysis_mode = payload.get("analysis_mode", "v2")
+    if analysis_mode not in {"legacy", "v2", "compare"}:
+        raise APIError(HTTPStatus.BAD_REQUEST, "analysis_mode 必须是 legacy、v2 或 compare")
+    command = [
+        sys.executable,
+        "-m",
+        "argus.cli",
+        "scan",
+        "-r",
+        repo,
+        "-w",
+        workspace,
+        "--engine",
+        "v2",
+    ]
+    defaults = project.get("default_config")
+    if isinstance(defaults, dict):
+        for key in sorted(defaults):
+            if key == "execution":
+                continue
+            command.extend(
+                [
+                    "--set",
+                    f"{key}={json.dumps(defaults[key], ensure_ascii=False)}",
+                ]
+            )
+    command.extend(
+        [
+            "--set",
+            f"source_mode={source_mode}",
+            "--set",
+            f"analysisMode={analysis_mode}",
+            "--set",
+            f"analyzers.enrichment={json.dumps(enrichment)}",
+            "--set",
+            f"analyzers.vuln={json.dumps(vuln)}",
+        ]
+    )
+    if payload.get("checkpoints", True) is False:
+        command.append("--yolo")
+    return workspace, command
+
+
 def _safe_json_file(path: Path, fallback: Any) -> Any:
     try:
         with path.open(encoding="utf-8") as handle:
@@ -306,6 +385,7 @@ class ConsoleService:
         self.project_root = project_root
         self.runs_root = runs_root
         self.launcher = launcher
+        self.control_plane = ControlPlaneService(runs_root)
 
     def analyzers(self) -> list[dict[str, str]]:
         discovered = discover_analyzers()
@@ -329,9 +409,7 @@ class ConsoleService:
 
         findings = self.findings(workspace)
         job = self.launcher.get(workspace)
-        if job is not None and job.status == "running":
-            status = "running"
-        elif (directory / "report.md").is_file():
+        if (directory / "report.md").is_file():
             status = "complete"
         elif (directory / "state.db").is_file() and (
             (directory / "enriched-graph.json").is_file() or (directory / "findings.json").is_file()
@@ -663,6 +741,74 @@ class ConsoleService:
             command.extend(["--focus", focus])
         return self.launcher.launch(workspace, action, command)
 
+    def create_project_scan(
+        self,
+        project_id: UUID,
+        payload: dict[str, Any],
+    ) -> Job:
+        project = self.control_plane.get_project(project_id)
+        available = set(discover_analyzers())
+        workspace, command = build_project_scan_command(
+            project,
+            payload,
+            available,
+        )
+        if (self.runs_root / workspace).exists():
+            raise APIError(
+                HTTPStatus.CONFLICT,
+                f"工作区已存在，请使用新的名称：{workspace}",
+            )
+        job = self.launcher.launch(workspace, "v2-scan", command)
+        self.control_plane.record_action(
+            "web.scan_create_requested",
+            project_id=project_id,
+            payload={
+                "workspace": workspace,
+                "analysis_mode": str(payload.get("analysis_mode", "v2")),
+                "worker_pid": job.pid,
+            },
+        )
+        return job
+
+    def scan_action(
+        self,
+        scan_id: UUID,
+        action: str,
+    ) -> Job:
+        scan = self.control_plane.get_scan(scan_id)
+        config = scan.get("config")
+        execution = config.get("execution") if isinstance(config, dict) else None
+        workspace = execution.get("workspace") if isinstance(execution, dict) else None
+        workspace = _validate_workspace(workspace)
+        if action == "resume":
+            command = [
+                sys.executable,
+                "-m",
+                "argus.cli",
+                "scan-resume",
+                "--scan-id",
+                str(scan_id),
+            ]
+        elif action == "cancel":
+            command = [
+                sys.executable,
+                "-m",
+                "argus.cli",
+                "scan-cancel",
+                "--scan-id",
+                str(scan_id),
+            ]
+        else:
+            raise APIError(HTTPStatus.BAD_REQUEST, "不支持的 Scan 操作")
+        job = self.launcher.launch(workspace, action, command)
+        self.control_plane.record_action(
+            f"web.scan_{action}_requested",
+            project_id=UUID(str(scan["project_id"])),
+            scan_id=scan_id,
+            payload={"workspace": workspace, "worker_pid": job.pid},
+        )
+        return job
+
     def dashboard(self) -> dict[str, Any]:
         workspaces = self.list_workspaces()
         selected = next((item for item in workspaces if item["status"] == "running"), None)
@@ -683,13 +829,82 @@ class ConsoleService:
             "project_root": str(self.project_root),
         }
 
+    def graph_nodes(
+        self,
+        scan_id: UUID,
+        *,
+        kind: str | None = None,
+        name: str | None = None,
+        file: str | None = None,
+        line: int | None = None,
+        max_nodes: int = 100,
+    ) -> dict[str, Any]:
+        return self._graph_call(
+            lambda service: service.find_nodes(
+                scan_id,
+                kind=kind,
+                name=name,
+                file=file,
+                line=line,
+                max_nodes=max_nodes,
+            ).model_dump(mode="json")
+        )
+
+    def graph_node(self, scan_id: UUID, node_id: str) -> dict[str, Any]:
+        return self._graph_call(lambda service: service.get_node(scan_id, node_id).model_dump(mode="json"))
+
+    def graph_slice(
+        self,
+        scan_id: UUID,
+        *,
+        seed_ids: list[str],
+        radius: int = 2,
+        allowed_kinds: list[str] | None = None,
+        max_nodes: int = 100,
+    ) -> dict[str, Any]:
+        return self._graph_call(
+            lambda service: service.graph_slice(
+                scan_id,
+                seed_ids=seed_ids,
+                radius=radius,
+                allowed_kinds=allowed_kinds,
+                max_nodes=max_nodes,
+            ).model_dump(mode="json")
+        )
+
+    def _graph_call(self, operation: Any) -> dict[str, Any]:
+        database_path = control_db_path(self.runs_root)
+        if not database_path.is_file():
+            raise APIError(HTTPStatus.NOT_FOUND, "Control Store 不存在")
+        database = Database(database_path)
+        try:
+            service = SecurityGraphService(
+                Repositories(database),
+                ArtifactStore(self.runs_root),
+            )
+            result: dict[str, Any] = operation(service)
+            return result
+        except NotFoundError as exc:
+            raise APIError(HTTPStatus.NOT_FOUND, str(exc)) from exc
+        except QueryLimitError as exc:
+            raise APIError(HTTPStatus.BAD_REQUEST, str(exc)) from exc
+        except (
+            ArtifactAccessDenied,
+            ArtifactCorruptionError,
+            SchemaValidationError,
+            SecurityGraphError,
+        ) as exc:
+            raise APIError(HTTPStatus.CONFLICT, str(exc)) from exc
+        finally:
+            database.close()
+
 
 class ArgusConsoleHandler(BaseHTTPRequestHandler):
     """HTTP handler serving the console assets and same-origin JSON API."""
 
     service: ConsoleService
     ui_root: Path
-    server_version = "ArgusConsole/0.1"
+    server_version = "ArgusConsole/0.2"
 
     def log_message(self, format: str, *args: Any) -> None:
         sys.stderr.write(f"[argus-web] {self.address_string()} {format % args}\n")
@@ -699,6 +914,17 @@ class ArgusConsoleHandler(BaseHTTPRequestHandler):
             self._do_get()
         except APIError as exc:
             self._send_json({"error": exc.message}, exc.status)
+        except (
+            ArtifactAccessDenied,
+            ArtifactCorruptionError,
+            ConflictError,
+            ControlPlaneInputError,
+            InvalidTransitionError,
+            NotFoundError,
+            SchemaValidationError,
+            VerificationPolicyDenied,
+        ) as exc:
+            self._send_control_error(exc)
         except Exception:
             self._send_json({"error": "服务器处理请求时发生内部错误"}, HTTPStatus.INTERNAL_SERVER_ERROR)
 
@@ -722,6 +948,177 @@ class ArgusConsoleHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/settings":
             self._send_json(self.service.settings())
+            return
+        if path == "/api/projects":
+            self._send_json({"projects": self.service.control_plane.list_projects()})
+            return
+        if path == "/api/reviews":
+            parameters = parse_qs(parsed.query)
+            scan_id_raw = self._query_one(parameters, "scan_id")
+            status_raw = self._query_one(parameters, "status")
+            scan_id = self._parse_uuid(scan_id_raw, "scan_id") if scan_id_raw is not None else None
+            try:
+                status = ReviewStatus(status_raw) if status_raw is not None else None
+            except ValueError as exc:
+                raise APIError(
+                    HTTPStatus.BAD_REQUEST,
+                    "status 不是有效的审核状态",
+                ) from exc
+            self._send_json(
+                {
+                    "reviews": self.service.control_plane.list_reviews(
+                        scan_id=scan_id,
+                        status=status,
+                    )
+                }
+            )
+            return
+        if path == "/api/verification/approvals":
+            parameters = parse_qs(parsed.query)
+            plan_id_raw = self._query_one(parameters, "plan_id")
+            plan_id = self._parse_uuid(plan_id_raw, "plan_id") if plan_id_raw is not None else None
+            self._send_json({"approvals": (self.service.control_plane.list_verification_approvals(plan_id=plan_id))})
+            return
+
+        project_route = self._entity_route(path, "projects")
+        if project_route is not None:
+            project_id, resource = project_route
+            if resource == "":
+                self._send_json(self.service.control_plane.get_project(project_id))
+            elif resource == "scans":
+                self._send_json({"scans": self.service.control_plane.list_scans(project_id)})
+            elif resource == "verification/environments":
+                self._send_json(
+                    {"environments": (self.service.control_plane.list_verification_environments(project_id))}
+                )
+            elif resource == "verification/identities":
+                self._send_json({"identities": (self.service.control_plane.list_verification_identities(project_id))})
+            else:
+                raise APIError(
+                    HTTPStatus.NOT_FOUND,
+                    "Project API 路径不存在",
+                )
+            return
+
+        artifact_route = self._entity_route(path, "artifacts")
+        if artifact_route is not None:
+            artifact_id, resource = artifact_route
+            if resource == "graph-slice":
+                self._send_json(self.service.control_plane.graph_slice_artifact(artifact_id))
+            elif resource:
+                raise APIError(
+                    HTTPStatus.NOT_FOUND,
+                    "Artifact API 路径不存在",
+                )
+            elif parse_qs(parsed.query).get("download") == ["1"]:
+                self._send_artifact(self.service.control_plane.artifact_content(artifact_id))
+            else:
+                self._send_json(self.service.control_plane.artifact(artifact_id))
+            return
+
+        finding_route = self._entity_route(path, "findings")
+        if finding_route is not None:
+            finding_id, resource = finding_route
+            if resource == "verification":
+                self._send_json(self.service.control_plane.verification_summary(finding_id))
+            elif resource:
+                raise APIError(
+                    HTTPStatus.NOT_FOUND,
+                    "Finding API 路径不存在",
+                )
+            else:
+                self._send_json(self.service.control_plane.finding(finding_id))
+            return
+
+        verification_plan_route = self._entity_route(path, "verification/plans")
+        if verification_plan_route is not None:
+            plan_id, resource = verification_plan_route
+            if resource:
+                raise APIError(
+                    HTTPStatus.NOT_FOUND,
+                    "Verification Plan API 路径不存在",
+                )
+            self._send_json(self.service.control_plane.verification_plan(plan_id))
+            return
+
+        scan_graph_route = self._scan_graph_route(path)
+        if scan_graph_route is not None:
+            scan_id, resource, node_id = scan_graph_route
+            parameters = parse_qs(parsed.query)
+            if resource == "nodes" and node_id is None:
+                file = self._query_one(parameters, "file")
+                line = self._query_int(parameters, "line")
+                max_nodes = self._query_int(
+                    parameters,
+                    "max_nodes",
+                    default=100,
+                )
+                assert max_nodes is not None
+                if line is not None and file is None:
+                    raise APIError(
+                        HTTPStatus.BAD_REQUEST,
+                        "line 查询必须同时提供 file",
+                    )
+                self._send_json(
+                    self.service.graph_nodes(
+                        scan_id,
+                        kind=self._query_one(parameters, "kind"),
+                        name=self._query_one(parameters, "name"),
+                        file=file,
+                        line=line,
+                        max_nodes=max_nodes,
+                    )
+                )
+            elif resource == "nodes" and node_id is not None:
+                self._send_json(self.service.graph_node(scan_id, node_id))
+            elif resource == "slice":
+                seed_ids = parameters.get("seed_id", [])
+                if not seed_ids or any(not item for item in seed_ids):
+                    raise APIError(
+                        HTTPStatus.BAD_REQUEST,
+                        "Graph Slice 至少需要一个 seed_id",
+                    )
+                radius = self._query_int(parameters, "radius", default=2)
+                max_nodes = self._query_int(
+                    parameters,
+                    "max_nodes",
+                    default=100,
+                )
+                assert radius is not None
+                assert max_nodes is not None
+                self._send_json(
+                    self.service.graph_slice(
+                        scan_id,
+                        seed_ids=seed_ids,
+                        radius=radius,
+                        allowed_kinds=parameters.get("allowed_kind") or None,
+                        max_nodes=max_nodes,
+                    )
+                )
+            else:
+                raise APIError(HTTPStatus.NOT_FOUND, "Graph API 路径不存在")
+            return
+
+        scan_route = self._entity_route(path, "scans")
+        if scan_route is not None:
+            scan_id, resource = scan_route
+            if resource == "":
+                self._send_json(self.service.control_plane.get_scan(scan_id))
+            elif resource == "tasks":
+                self._send_json({"tasks": self.service.control_plane.tasks(scan_id)})
+            elif resource == "plan":
+                self._send_json(self.service.control_plane.plan(scan_id))
+            elif resource == "events":
+                self._send_json({"events": self.service.control_plane.events(scan_id)})
+            elif resource == "artifacts":
+                self._send_json({"artifacts": (self.service.control_plane.list_artifacts(scan_id))})
+            elif resource == "findings":
+                self._send_json({"findings": (self.service.control_plane.list_findings(scan_id))})
+            else:
+                raise APIError(
+                    HTTPStatus.NOT_FOUND,
+                    "Scan API 路径不存在",
+                )
             return
 
         workspace_route = self._workspace_route(path)
@@ -755,10 +1152,140 @@ class ArgusConsoleHandler(BaseHTTPRequestHandler):
         try:
             payload = self._read_json()
             parsed = urlparse(self.path)
+            if parsed.path == "/api/projects":
+                self._send_json(
+                    self.service.control_plane.create_project(payload),
+                    HTTPStatus.CREATED,
+                )
+                return
+            if parsed.path == "/api/reviews":
+                self._send_json(
+                    self.service.control_plane.create_review(payload),
+                    HTTPStatus.CREATED,
+                )
+                return
             if parsed.path == "/api/scans":
                 job = self.service.create_scan(payload)
                 self._send_json({"job": job.public()}, HTTPStatus.ACCEPTED)
                 return
+
+            project_route = self._entity_route(parsed.path, "projects")
+            if project_route is not None:
+                project_id, resource = project_route
+                if resource == "scans":
+                    job = self.service.create_project_scan(
+                        project_id,
+                        payload,
+                    )
+                    self._send_json(
+                        {"job": job.public()},
+                        HTTPStatus.ACCEPTED,
+                    )
+                    return
+                if resource == "verification/environments":
+                    self._send_json(
+                        self.service.control_plane.create_verification_environment(
+                            project_id,
+                            payload,
+                        ),
+                        HTTPStatus.CREATED,
+                    )
+                    return
+                if resource == "verification/identities":
+                    self._send_json(
+                        self.service.control_plane.create_verification_identity(
+                            project_id,
+                            payload,
+                        ),
+                        HTTPStatus.CREATED,
+                    )
+                    return
+
+            finding_route = self._entity_route(parsed.path, "findings")
+            if finding_route is not None:
+                finding_id, resource = finding_route
+                if resource == "verification/requirements":
+                    self._send_json(
+                        self.service.control_plane.resolve_verification_requirement(
+                            finding_id,
+                            payload,
+                        ),
+                        HTTPStatus.CREATED,
+                    )
+                    return
+                if resource == "verification/plans":
+                    self._send_json(
+                        self.service.control_plane.compile_verification_plan(
+                            finding_id,
+                            payload,
+                        ),
+                        HTTPStatus.CREATED,
+                    )
+                    return
+
+            verification_plan_route = self._entity_route(
+                parsed.path,
+                "verification/plans",
+            )
+            if verification_plan_route is not None:
+                plan_id, resource = verification_plan_route
+                if resource == "approval":
+                    self._send_json(
+                        self.service.control_plane.request_verification_approval(plan_id),
+                        HTTPStatus.CREATED,
+                    )
+                    return
+                if resource == "execute":
+                    self._send_json(
+                        self.service.control_plane.execute_verification(
+                            plan_id,
+                            payload,
+                        ),
+                        HTTPStatus.CREATED,
+                    )
+                    return
+
+            verification_approval_route = self._entity_route(
+                parsed.path,
+                "verification/approvals",
+            )
+            if verification_approval_route is not None:
+                approval_id, resource = verification_approval_route
+                if resource in {"approve", "reject"}:
+                    decision = ApprovalDecision.APPROVED if resource == "approve" else ApprovalDecision.REJECTED
+                    self._send_json(
+                        self.service.control_plane.decide_verification_approval(
+                            approval_id,
+                            decision,
+                            payload,
+                        )
+                    )
+                    return
+
+            scan_route = self._entity_route(parsed.path, "scans")
+            if scan_route is not None:
+                scan_id, resource = scan_route
+                if resource in {"resume", "cancel"}:
+                    job = self.service.scan_action(scan_id, resource)
+                    self._send_json(
+                        {"job": job.public()},
+                        HTTPStatus.ACCEPTED,
+                    )
+                    return
+
+            review_route = self._entity_route(parsed.path, "reviews")
+            if review_route is not None:
+                review_id, resource = review_route
+                if resource in {"approve", "reject"}:
+                    target = ReviewStatus.APPROVED if resource == "approve" else ReviewStatus.REJECTED
+                    self._send_json(
+                        self.service.control_plane.decide_review(
+                            review_id,
+                            target,
+                            payload,
+                        )
+                    )
+                    return
 
             workspace_route = self._workspace_route(parsed.path)
             if workspace_route is not None:
@@ -774,8 +1301,63 @@ class ArgusConsoleHandler(BaseHTTPRequestHandler):
             raise APIError(HTTPStatus.NOT_FOUND, "API 路径不存在")
         except APIError as exc:
             self._send_json({"error": exc.message}, exc.status)
+        except (
+            ArtifactAccessDenied,
+            ArtifactCorruptionError,
+            ConflictError,
+            ControlPlaneInputError,
+            InvalidTransitionError,
+            NotFoundError,
+            SchemaValidationError,
+            VerificationPolicyDenied,
+        ) as exc:
+            self._send_control_error(exc)
         except Exception:
             self._send_json({"error": "服务器处理请求时发生内部错误"}, HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def do_PATCH(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler hook
+        try:
+            payload = self._read_json()
+            path = urlparse(self.path).path
+            project_route = self._entity_route(path, "projects")
+            if project_route is not None:
+                project_id, resource = project_route
+                if not resource:
+                    self._send_json(
+                        self.service.control_plane.update_project(
+                            project_id,
+                            payload,
+                        )
+                    )
+                    return
+            finding_route = self._entity_route(path, "findings")
+            if finding_route is not None:
+                finding_id, resource = finding_route
+                if not resource:
+                    self._send_json(
+                        self.service.control_plane.update_finding(
+                            finding_id,
+                            payload,
+                        )
+                    )
+                    return
+            raise APIError(HTTPStatus.NOT_FOUND, "API 路径不存在")
+        except APIError as exc:
+            self._send_json({"error": exc.message}, exc.status)
+        except (
+            ArtifactCorruptionError,
+            ConflictError,
+            ControlPlaneInputError,
+            InvalidTransitionError,
+            NotFoundError,
+            SchemaValidationError,
+        ) as exc:
+            self._send_control_error(exc)
+        except Exception:
+            self._send_json(
+                {"error": "服务器处理请求时发生内部错误"},
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
 
     def _workspace_route(self, path: str) -> tuple[str, str] | None:
         prefix = "/api/workspaces/"
@@ -786,6 +1368,95 @@ class ArgusConsoleHandler(BaseHTTPRequestHandler):
         if not workspace:
             raise APIError(HTTPStatus.NOT_FOUND, "工作区路径不完整")
         return unquote(workspace), resource if separator else ""
+
+    @classmethod
+    def _entity_route(
+        cls,
+        path: str,
+        entity: str,
+    ) -> tuple[UUID, str] | None:
+        prefix = f"/api/{entity}/"
+        if not path.startswith(prefix):
+            return None
+        remainder = path[len(prefix) :]
+        identifier, separator, resource = remainder.partition("/")
+        if not identifier:
+            raise APIError(
+                HTTPStatus.NOT_FOUND,
+                f"{entity} 路径不完整",
+            )
+        return (
+            cls._parse_uuid(identifier, f"{entity.rstrip('s')}_id"),
+            resource if separator else "",
+        )
+
+    @staticmethod
+    def _parse_uuid(value: str, field: str) -> UUID:
+        try:
+            return UUID(value)
+        except ValueError as exc:
+            raise APIError(
+                HTTPStatus.BAD_REQUEST,
+                f"{field} 必须是 UUID",
+            ) from exc
+
+    @staticmethod
+    def _scan_graph_route(
+        path: str,
+    ) -> tuple[UUID, str, str | None] | None:
+        prefix = "/api/scans/"
+        if not path.startswith(prefix):
+            return None
+        parts = path[len(prefix) :].split("/")
+        if len(parts) < 3 or parts[1] != "graph":
+            return None
+        try:
+            scan_id = UUID(parts[0])
+        except ValueError as exc:
+            raise APIError(HTTPStatus.BAD_REQUEST, "scan_id 必须是 UUID") from exc
+        resource = parts[2]
+        if resource == "nodes":
+            if len(parts) == 3:
+                return scan_id, resource, None
+            if len(parts) == 4 and parts[3]:
+                return scan_id, resource, unquote(parts[3])
+        if resource == "slice" and len(parts) == 3:
+            return scan_id, resource, None
+        raise APIError(HTTPStatus.NOT_FOUND, "Graph API 路径不存在")
+
+    @staticmethod
+    def _query_one(
+        parameters: dict[str, list[str]],
+        name: str,
+    ) -> str | None:
+        values = parameters.get(name)
+        if not values:
+            return None
+        if len(values) != 1 or not values[0]:
+            raise APIError(
+                HTTPStatus.BAD_REQUEST,
+                f"{name} 必须只提供一个非空值",
+            )
+        return values[0]
+
+    @classmethod
+    def _query_int(
+        cls,
+        parameters: dict[str, list[str]],
+        name: str,
+        *,
+        default: int | None = None,
+    ) -> int | None:
+        raw = cls._query_one(parameters, name)
+        if raw is None:
+            return default
+        try:
+            return int(raw)
+        except ValueError as exc:
+            raise APIError(
+                HTTPStatus.BAD_REQUEST,
+                f"{name} 必须是整数",
+            ) from exc
 
     def _read_json(self) -> dict[str, Any]:
         raw_length = self.headers.get("Content-Length")
@@ -843,6 +1514,49 @@ class ArgusConsoleHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _send_artifact(self, content: ArtifactContent) -> None:
+        media_type = content.artifact.media_type
+        if (
+            re.fullmatch(
+                r"[A-Za-z0-9.+-]+/[A-Za-z0-9.+-]+",
+                media_type,
+            )
+            is None
+        ):
+            media_type = "application/octet-stream"
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", media_type)
+        self.send_header("Content-Length", str(content.artifact.size_bytes))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header(
+            "Content-Disposition",
+            f'attachment; filename="{content.artifact.id}"',
+        )
+        self.end_headers()
+        with content.path.open("rb") as handle:
+            while chunk := handle.read(64 * 1024):
+                self.wfile.write(chunk)
+
+    def _send_control_error(self, exc: Exception) -> None:
+        if isinstance(exc, ArtifactAccessDenied):
+            status = HTTPStatus.FORBIDDEN
+        elif isinstance(exc, VerificationPolicyDenied):
+            status = HTTPStatus.FORBIDDEN
+        elif isinstance(exc, NotFoundError):
+            status = HTTPStatus.NOT_FOUND
+        elif isinstance(
+            exc,
+            (
+                ArtifactCorruptionError,
+                ConflictError,
+                InvalidTransitionError,
+            ),
+        ):
+            status = HTTPStatus.CONFLICT
+        else:
+            status = HTTPStatus.BAD_REQUEST
+        self._send_json({"error": str(exc)}, status)
+
 
 def make_server(
     *,
@@ -858,6 +1572,7 @@ def make_server(
     assets = ui_root or Path(__file__).with_name("web_ui")
     manager = JobManager(project_root, runs_root)
     service = ConsoleService(project_root=project_root, runs_root=runs_root, launcher=manager)
+    service.control_plane.reconcile_running_scans()
 
     class Handler(ArgusConsoleHandler):
         pass

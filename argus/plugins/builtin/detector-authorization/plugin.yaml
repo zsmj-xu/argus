@@ -1,0 +1,64 @@
+apiVersion: argus.security/v2
+kind: detector
+metadata:
+  id: detector.authorization
+  version: 1.0.0
+entrypoint: argus.detection.builtin.authorization.plugin:authorization_detection_runtime
+consumes:
+  - capability: source.snapshot.v1
+    required: true
+  - capability: code.graph.codegraph.v1
+    required: true
+  - capability: security.graph.v1
+    required: true
+produces:
+  - capability: candidate.authorization.index.v1
+    artifactType: candidate.index.v1
+    schemaVersion: "1.0"
+  - capability: candidate.authorization.v1
+    artifactType: candidate.static.v1
+    schemaVersion: "1.0"
+    supplemental: true
+  - capability: graph.slice.authorization.index.v1
+    artifactType: graph.slice.index.v1
+    schemaVersion: "1.0"
+  - capability: graph.slice.authorization.v1
+    artifactType: graph.slice.v1
+    schemaVersion: "1.0"
+    supplemental: true
+  - capability: source.context.authorization.index.v1
+    artifactType: source.context.index.v1
+    schemaVersion: "1.0"
+  - capability: source.context.authorization.v1
+    artifactType: source.context.v1
+    schemaVersion: "1.0"
+    supplemental: true
+  - capability: assessment.authorization.index.v1
+    artifactType: assessment.index.v1
+    schemaVersion: "1.0"
+  - capability: assessment.authorization.v1
+    artifactType: assessment.static.v1
+    schemaVersion: "1.0"
+    supplemental: true
+  - capability: finding.static.authorization.v2
+    artifactType: finding.static.v2
+    schemaVersion: "2.0"
+outputSchemas:
+  candidate.authorization.index.v1: {type: array}
+  candidate.authorization.v1: {type: object}
+  graph.slice.authorization.index.v1: {type: array}
+  graph.slice.authorization.v1: {type: object}
+  source.context.authorization.index.v1: {type: array}
+  source.context.authorization.v1: {type: object}
+  assessment.authorization.index.v1: {type: array}
+  assessment.authorization.v1: {type: object}
+  finding.static.authorization.v2: {type: array}
+permissions:
+  source: read
+  network: llm
+  subprocess: none
+  secrets: llm
+runtime:
+  isolation: process
+  timeoutSeconds: 600
+maxAttempts: 2

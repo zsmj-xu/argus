@@ -1,0 +1,34 @@
+apiVersion: argus.security/v2
+kind: aggregator
+metadata:
+  id: comparison.injection
+  version: 1.0.0
+entrypoint: argus.detection.comparison:finding_comparison_runtime
+consumes:
+  - capability: legacy.findings.injection.v1
+    required: true
+  - capability: finding.static.injection.v2
+    required: true
+produces:
+  - capability: comparison.injection.v1
+    artifactType: comparison.findings.v1
+    schemaVersion: "1.0"
+outputSchemas:
+  comparison.injection.v1:
+    type: object
+    required:
+      - schema_version
+      - rule_family
+      - matched
+      - legacy_only
+      - v2_only
+      - counts
+      - affects_main_report
+permissions:
+  source: none
+  network: none
+  subprocess: none
+  secrets: none
+runtime:
+  isolation: process
+  timeoutSeconds: 300

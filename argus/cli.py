@@ -1,6 +1,6 @@
 """Argus CLI —— argparse 分发 start / resume / continue / stop / workspaces。
 
-- start:建 workspace 目录 → build_graph → load_config → make_initial_state → 编译并 invoke 图。
+- start:加载配置 → 创建 SourceSnapshot/Control 记录 → 在快照上编译并 invoke 旧图。
 - resume:崩溃后用同 workspace 的 checkpointer 续跑;可在重试前注入配置。
 - continue:人看完检查点后主动放行 interrupt,推进图继续跑,并把 --set / --focus 注入进 state.config。
 - stop:M1 骨架。
@@ -13,9 +13,11 @@ from __future__ import annotations
 
 import argparse
 import copy
+import json
 import os
 import sys
 from typing import Any
+from uuid import UUID
 
 from langgraph.types import Command
 
@@ -51,8 +53,14 @@ def _report_result(result: dict[str, Any], workspace: str) -> None:
 
 
 def cmd_start(args: argparse.Namespace) -> int:
-    """start:新建/覆盖一次运行。建目录 → 载配置 → 初始状态 → 编译 invoke。"""
+    """start:创建隔离源码快照和 V2 记录，再运行兼容 Pipeline。"""
     from argus.config import load_config
+    from argus.snapshots.compat import (
+        finish_legacy_scan_record,
+        prepare_legacy_scan,
+        record_legacy_interruption,
+        sync_legacy_artifacts,
+    )
 
     repo_path = os.path.abspath(args.repo)
     if not os.path.isdir(repo_path):
@@ -60,8 +68,6 @@ def cmd_start(args: argparse.Namespace) -> int:
         return 1
 
     workspace = args.workspace
-    ws_dir = workspace_dir(workspace, RUNS_ROOT)
-    os.makedirs(ws_dir, exist_ok=True)
 
     overrides: list[str] = list(args.set or [])
     if args.yolo:
@@ -69,9 +75,17 @@ def cmd_start(args: argparse.Namespace) -> int:
         overrides.append("checkpoints=false")
 
     config = load_config(args.config, overrides)
+    control_link = prepare_legacy_scan(
+        repository_path=repo_path,
+        workspace=workspace,
+        config=config,
+        runs_root=RUNS_ROOT,
+    )
+    if control_link.materialized_path is None:
+        raise RuntimeError("source snapshot was not materialized")
 
     state = make_initial_state(
-        repo_path=repo_path,
+        repo_path=control_link.materialized_path,
         workspace=workspace,
         config=config,
         runs_root=RUNS_ROOT,
@@ -79,13 +93,58 @@ def cmd_start(args: argparse.Namespace) -> int:
 
     analyzers = discover_analyzers()
     print(f"[argus] discovered {len(analyzers)} analyzer(s): {sorted(analyzers)}")
+    from argus.planning.legacy import compile_legacy_task_plan
+
+    compile_legacy_task_plan(
+        link=control_link,
+        config=config,
+        analyzers=analyzers,
+        runs_root=RUNS_ROOT,
+    )
 
     checkpointer = make_checkpointer(workspace, runs_root=RUNS_ROOT)
     app = build_pipeline(analyzers, checkpointer)
 
-    result = app.invoke(state, _thread_config(workspace))
+    try:
+        result = app.invoke(state, _thread_config(workspace))
+    except Exception as exc:
+        try:
+            sync_legacy_artifacts(workspace=workspace, runs_root=RUNS_ROOT)
+            record_legacy_interruption(workspace, type(exc).__name__, RUNS_ROOT)
+        except Exception as control_exc:
+            raise ExceptionGroup(
+                "legacy scan and Control Store synchronization both failed",
+                [exc, control_exc],
+            ) from exc
+        raise
+    sync_legacy_artifacts(workspace=workspace, runs_root=RUNS_ROOT)
+    finish_legacy_scan_record(
+        workspace=workspace,
+        paused="__interrupt__" in result,
+        runs_root=RUNS_ROOT,
+    )
     _report_result(result, workspace)
     return 0
+
+
+def _merged_state_config(
+    app: Any,
+    cfg: dict[str, Any],
+    overrides: list[str],
+    focus: str | None,
+) -> dict[str, Any] | None:
+    """Build a review-time config update without mutating the checkpoint."""
+    from argus.config import apply_overrides, validate_config
+
+    if not overrides and focus is None:
+        return None
+
+    snapshot = app.get_state(cfg)
+    merged_config: dict[str, Any] = copy.deepcopy(snapshot.values["config"])
+    apply_overrides(merged_config, overrides)
+    if focus is not None:
+        merged_config["focus"] = focus
+    return validate_config(merged_config)
 
 
 def _inject_into_state(
@@ -94,25 +153,10 @@ def _inject_into_state(
     overrides: list[str],
     focus: str | None,
 ) -> None:
-    """把 continue 的 --set / --focus 合并进 checkpoint 持久化的 state.config。
-
-    读当前 state.config 深拷贝 → 用 apply_overrides 打 --set 点路径 → --focus 映射成
-    config["focus"] 键(分析器读 config.get("focus") 做 scope)→ update_state 写回 state。
-    写回后进入 checkpoint,故放行后执行的下游节点及后续 resume 都能读到合并后的 config。
-    无注入(空 overrides 且无 focus)时直接返回,不触碰 state。
-    """
-    from argus.config import apply_overrides
-
-    if not overrides and focus is None:
+    """把 continue 的 --set / --focus 合并进 checkpoint 持久化的 state.config。"""
+    merged_config = _merged_state_config(app, cfg, overrides, focus)
+    if merged_config is None:
         return
-
-    snapshot = app.get_state(cfg)
-    merged_config: dict[str, Any] = copy.deepcopy(snapshot.values["config"])
-
-    apply_overrides(merged_config, overrides)
-    if focus is not None:
-        # --focus <path> 等价于 --set focus=<path>:focus 是 config 的一个 scope 键。
-        merged_config["focus"] = focus
 
     app.update_state(cfg, {"config": merged_config})
 
@@ -138,6 +182,14 @@ def _advance(
         print(f"[argus] no checkpoint for workspace {workspace!r} at {db_path}", file=sys.stderr)
         return 1
 
+    from argus.snapshots.compat import (
+        finish_legacy_scan_record,
+        record_legacy_interruption,
+        resume_legacy_scan_record,
+        sync_legacy_artifacts,
+        update_legacy_scan_config,
+    )
+
     analyzers = discover_analyzers()
     checkpointer = make_checkpointer(workspace, runs_root=RUNS_ROOT)
     app = build_pipeline(analyzers, checkpointer)
@@ -145,12 +197,18 @@ def _advance(
 
     snapshot = app.get_state(cfg)
     if not snapshot.next:
+        sync_legacy_artifacts(workspace=workspace, runs_root=RUNS_ROOT)
+        finish_legacy_scan_record(workspace=workspace, paused=False, runs_root=RUNS_ROOT)
         print(f"[argus] workspace {workspace!r} already complete; nothing to {action}")
         _report_result(dict(snapshot.values), workspace)
         return 0
 
     # 放行前把 --set / --focus 注入合并进 state.config,让下游节点从 state 读到新值。
-    _inject_into_state(app, cfg, overrides or [], focus)
+    merged_config = _merged_state_config(app, cfg, overrides or [], focus)
+    if merged_config is not None:
+        update_legacy_scan_config(workspace, merged_config, RUNS_ROOT)
+        app.update_state(cfg, {"config": merged_config})
+    resume_legacy_scan_record(workspace, RUNS_ROOT)
 
     # 停在 interrupt(检查点)时,Command(resume=...) 提供审阅结论并从检查点之后继续;
     # 否则(崩溃在节点中途)用 None 平推,让 LangGraph 从断点续跑。
@@ -162,7 +220,24 @@ def _advance(
     else:
         print(f"[argus] {action}: continuing workspace {workspace!r} from last checkpoint")
 
-    result = app.invoke(graph_input, cfg)
+    try:
+        result = app.invoke(graph_input, cfg)
+    except Exception as exc:
+        try:
+            sync_legacy_artifacts(workspace=workspace, runs_root=RUNS_ROOT)
+            record_legacy_interruption(workspace, type(exc).__name__, RUNS_ROOT)
+        except Exception as control_exc:
+            raise ExceptionGroup(
+                "legacy resume and Control Store synchronization both failed",
+                [exc, control_exc],
+            ) from exc
+        raise
+    sync_legacy_artifacts(workspace=workspace, runs_root=RUNS_ROOT)
+    finish_legacy_scan_record(
+        workspace=workspace,
+        paused="__interrupt__" in result,
+        runs_root=RUNS_ROOT,
+    )
     _report_result(result, workspace)
     return 0
 
@@ -224,6 +299,243 @@ def cmd_web(args: argparse.Namespace) -> int:
     return serve(args)
 
 
+def _print_v2_status(status: Any) -> None:
+    print(f"[argus] scan_id={status.scan.id} engine={status.scan.engine.value} status={status.scan.status.value}")
+    for task in status.tasks:
+        print(f"[argus] task={task.plugin_id} status={task.status.value}")
+    for review_id in status.open_review_ids:
+        print(f"[argus] review_open={review_id}")
+
+
+def _v2_executor() -> tuple[Any, Any]:
+    from argus.control.db import Database, control_db_path, upgrade_database
+    from argus.control.repositories import Repositories
+    from argus.execution.local import LocalPlanExecutor
+
+    path = control_db_path(RUNS_ROOT)
+    upgrade_database(path)
+    database = Database(path)
+    return database, LocalPlanExecutor(
+        Repositories(database),
+        runs_root=RUNS_ROOT,
+    )
+
+
+def cmd_scan(args: argparse.Namespace) -> int:
+    """Create a scan; M4 defaults to the V2 LocalPlanExecutor."""
+    if args.engine == "legacy":
+        print(
+            "[argus] warning: the legacy engine is deprecated; migrate to `argus scan` V2",
+            file=sys.stderr,
+        )
+        return cmd_start(args)
+
+    from argus.config import load_config
+    from argus.execution.scan import create_v2_scan
+
+    overrides = list(args.set or [])
+    if args.yolo:
+        overrides.append("checkpoints=false")
+    config = load_config(args.config, overrides)
+    scan = create_v2_scan(
+        repository_path=os.path.abspath(args.repo),
+        workspace=args.workspace,
+        config=config,
+        runs_root=RUNS_ROOT,
+    )
+    database, executor = _v2_executor()
+    try:
+        status = executor.run_ready_tasks(scan.id)
+        _print_v2_status(status)
+        return 0 if status.scan.status.value != "failed" else 1
+    finally:
+        database.close()
+
+
+def cmd_scan_status(args: argparse.Namespace) -> int:
+    database, executor = _v2_executor()
+    try:
+        _print_v2_status(executor.get_status(UUID(args.scan_id)))
+        return 0
+    finally:
+        database.close()
+
+
+def cmd_scan_resume(args: argparse.Namespace) -> int:
+    database, executor = _v2_executor()
+    try:
+        status = executor.resume(UUID(args.scan_id))
+        _print_v2_status(status)
+        return 0 if status.scan.status.value != "failed" else 1
+    finally:
+        database.close()
+
+
+def cmd_scan_cancel(args: argparse.Namespace) -> int:
+    database, executor = _v2_executor()
+    try:
+        _print_v2_status(executor.cancel(UUID(args.scan_id)))
+        return 0
+    finally:
+        database.close()
+
+
+def cmd_review_decide(args: argparse.Namespace) -> int:
+    from argus.control.services import ControlServices
+    from argus.domain.enums import ReviewStatus
+
+    database, executor = _v2_executor()
+    try:
+        target = ReviewStatus.APPROVED if args.review_action == "approve" else ReviewStatus.REJECTED
+        review = ControlServices(executor.repositories).reviews.decide(
+            UUID(args.review_id),
+            target,
+            reviewer=args.reviewer,
+            reason=args.reason,
+        )
+        print(f"[argus] review_id={review.id} status={review.status.value} scan_id={review.scan_id}")
+        return 0
+    finally:
+        database.close()
+
+
+def cmd_verification_status(args: argparse.Namespace) -> int:
+    from argus.control_plane.service import ControlPlaneService
+
+    summary = ControlPlaneService(RUNS_ROOT).verification_summary(UUID(args.finding_id))
+    print(json.dumps(summary, ensure_ascii=False, sort_keys=True))
+    return 0
+
+
+def cmd_verification_approval(args: argparse.Namespace) -> int:
+    from argus.control_plane.service import ControlPlaneService
+    from argus.verification.models import ApprovalDecision
+
+    service = ControlPlaneService(RUNS_ROOT)
+    if args.verification_approval_action == "request":
+        approval = service.request_verification_approval(UUID(args.plan_id))
+    else:
+        target = (
+            ApprovalDecision.APPROVED if args.verification_approval_action == "approve" else ApprovalDecision.REJECTED
+        )
+        approval = service.decide_verification_approval(
+            UUID(args.approval_id),
+            target,
+            {
+                "reviewer": args.reviewer,
+                "reason": args.reason,
+            },
+        )
+    print(
+        f"[argus] verification_approval_id={approval['id']} "
+        f"decision={approval['decision']} plan_hash={approval['plan_hash']}"
+    )
+    return 0
+
+
+def cmd_verification_execute(args: argparse.Namespace) -> int:
+    from argus.control_plane.service import ControlPlaneService
+
+    test_data: dict[str, str] = {}
+    for item in args.test_data:
+        key, separator, value = item.partition("=")
+        if separator != "=" or not key or not value:
+            raise ValueError("--test-data entries must use non-empty NAME=VALUE syntax")
+        test_data[key] = value
+    result = ControlPlaneService(RUNS_ROOT).execute_verification(
+        UUID(args.plan_id),
+        {"test_data": test_data},
+    )
+    print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+    return 0
+
+
+def cmd_control_backup(args: argparse.Namespace) -> int:
+    from argus.control.db import control_db_path
+    from argus.control.maintenance import backup_database
+
+    result = backup_database(control_db_path(RUNS_ROOT), args.output)
+    print(
+        json.dumps(
+            {
+                "path": str(result.path),
+                "sha256": result.sha256,
+                "size_bytes": result.size_bytes,
+            },
+            sort_keys=True,
+        )
+    )
+    return 0
+
+
+def cmd_artifact_gc(args: argparse.Namespace) -> int:
+    from datetime import timedelta
+
+    from argus.control.db import Database, control_db_path
+    from argus.control.maintenance import collect_artifact_garbage
+
+    database = Database(control_db_path(RUNS_ROOT))
+    try:
+        result = collect_artifact_garbage(
+            database,
+            runs_root=RUNS_ROOT,
+            apply=args.apply,
+            minimum_age=timedelta(hours=args.minimum_age_hours),
+        )
+    finally:
+        database.close()
+    print(
+        json.dumps(
+            {
+                "mode": "quarantine" if args.apply else "dry-run",
+                "referenced": result.referenced,
+                "candidates": list(result.candidates),
+                "quarantined": list(result.quarantined),
+                "quarantine_root": (str(result.quarantine_root) if result.quarantine_root is not None else None),
+            },
+            sort_keys=True,
+        )
+    )
+    return 0
+
+
+def cmd_findings_export(args: argparse.Namespace) -> int:
+    from pathlib import Path
+
+    from argus.reporting.exports import findings_json, findings_sarif
+
+    database, executor = _v2_executor()
+    try:
+        findings = executor.repositories.findings.list(scan_id=UUID(args.scan_id))
+    finally:
+        database.close()
+    rendered = findings_sarif(findings) if args.format == "sarif" else findings_json(findings)
+    if args.output == "-":
+        print(rendered, end="")
+    else:
+        output = Path(args.output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(rendered, encoding="utf-8")
+        print(f"[argus] findings exported: {output.resolve()}")
+    return 0
+
+
+def cmd_performance_baseline(args: argparse.Namespace) -> int:
+    from argus.performance import collect_performance_baseline
+
+    database, executor = _v2_executor()
+    try:
+        baseline = collect_performance_baseline(
+            executor.repositories,
+            UUID(args.scan_id),
+            runs_root=RUNS_ROOT,
+        )
+    finally:
+        database.close()
+    print(baseline.model_dump_json(indent=2))
+    return 0
+
+
 def _build_parser() -> argparse.ArgumentParser:
     """装配 argparse 子命令解析器。"""
     parser = argparse.ArgumentParser(prog="argus", description="AI 白盒代码扫描编排器")
@@ -236,6 +548,23 @@ def _build_parser() -> argparse.ArgumentParser:
     start.add_argument("--set", action="append", default=[], help="点路径覆盖,如 a.b=c(可多次)")
     start.add_argument("--yolo", action="store_true", help="跳过所有 checkpoint,一次跑到底")
     start.set_defaults(func=cmd_start)
+
+    scan = subparsers.add_parser(
+        "scan",
+        help="新建扫描（默认使用 V2 本地执行器）",
+    )
+    scan.add_argument("-r", "--repo", required=True, help="目标仓库路径")
+    scan.add_argument("-w", "--workspace", required=True, help="workspace 名")
+    scan.add_argument("-c", "--config", default=None, help="YAML 配置路径")
+    scan.add_argument(
+        "--engine",
+        choices=["legacy", "v2"],
+        default="v2",
+        help="执行引擎（默认 v2）",
+    )
+    scan.add_argument("--set", action="append", default=[], help="点路径配置覆盖")
+    scan.add_argument("--yolo", action="store_true", help="跳过静态 Review Gate")
+    scan.set_defaults(func=cmd_scan)
 
     resume = subparsers.add_parser("resume", help="从上次 checkpoint 调整配置并续跑")
     resume.add_argument("-w", "--workspace", required=True, help="workspace 名")
@@ -254,6 +583,97 @@ def _build_parser() -> argparse.ArgumentParser:
 
     workspaces = subparsers.add_parser("workspaces", help="列出所有 workspace")
     workspaces.set_defaults(func=cmd_workspaces)
+
+    scan_status = subparsers.add_parser("scan-status", help="查询 V2 Scan 状态")
+    scan_status.add_argument("--scan-id", required=True)
+    scan_status.set_defaults(func=cmd_scan_status)
+
+    scan_resume = subparsers.add_parser("scan-resume", help="恢复 V2 Scan")
+    scan_resume.add_argument("--scan-id", required=True)
+    scan_resume.set_defaults(func=cmd_scan_resume)
+
+    scan_cancel = subparsers.add_parser("scan-cancel", help="取消 V2 Scan")
+    scan_cancel.add_argument("--scan-id", required=True)
+    scan_cancel.set_defaults(func=cmd_scan_cancel)
+
+    review = subparsers.add_parser("review", help="处理 V2 静态审核")
+    review_actions = review.add_subparsers(dest="review_action", required=True)
+    for action in ("approve", "reject"):
+        decision = review_actions.add_parser(action)
+        decision.add_argument("--review-id", required=True)
+        decision.add_argument("--reviewer", required=True)
+        decision.add_argument("--reason", required=True)
+        decision.set_defaults(func=cmd_review_decide)
+
+    verification_status = subparsers.add_parser(
+        "verification-status",
+        help="查询 M8 验证需求、计划和审批状态（不执行网络请求）",
+    )
+    verification_status.add_argument("--finding-id", required=True)
+    verification_status.set_defaults(func=cmd_verification_status)
+
+    verification_approval = subparsers.add_parser(
+        "verification-approval",
+        help="处理 hash 绑定的 M8 验证计划审批",
+    )
+    verification_approval_actions = verification_approval.add_subparsers(
+        dest="verification_approval_action",
+        required=True,
+    )
+    request = verification_approval_actions.add_parser("request")
+    request.add_argument("--plan-id", required=True)
+    request.set_defaults(func=cmd_verification_approval)
+    for action in ("approve", "reject"):
+        decision = verification_approval_actions.add_parser(action)
+        decision.add_argument("--approval-id", required=True)
+        decision.add_argument("--reviewer", required=True)
+        decision.add_argument("--reason", required=True)
+        decision.set_defaults(func=cmd_verification_approval)
+
+    verification_execute = subparsers.add_parser(
+        "verification-execute",
+        help="执行已人工审批的 M9 只读 HTTP 验证计划",
+    )
+    verification_execute.add_argument("--plan-id", required=True)
+    verification_execute.add_argument(
+        "--test-data",
+        action="append",
+        default=[],
+        metavar="NAME=VALUE",
+        help="显式测试数据；不会自动枚举资源 ID",
+    )
+    verification_execute.set_defaults(func=cmd_verification_execute)
+
+    control_backup = subparsers.add_parser(
+        "control-backup",
+        help="创建不覆盖已有目标的 Control Store 一致性备份",
+    )
+    control_backup.add_argument("--output", required=True)
+    control_backup.set_defaults(func=cmd_control_backup)
+
+    artifact_gc = subparsers.add_parser(
+        "artifact-gc",
+        help="列出未引用 Artifact；--apply 时移入可恢复隔离区",
+    )
+    artifact_gc.add_argument("--apply", action="store_true")
+    artifact_gc.add_argument("--minimum-age-hours", type=float, default=24.0)
+    artifact_gc.set_defaults(func=cmd_artifact_gc)
+
+    findings_export = subparsers.add_parser(
+        "findings-export",
+        help="从 Canonical Finding 导出 JSON 或 SARIF",
+    )
+    findings_export.add_argument("--scan-id", required=True)
+    findings_export.add_argument("--format", choices=["json", "sarif"], required=True)
+    findings_export.add_argument("--output", default="-")
+    findings_export.set_defaults(func=cmd_findings_export)
+
+    performance = subparsers.add_parser(
+        "performance-baseline",
+        help="汇总 V2 Scan 的持久化性能基线",
+    )
+    performance.add_argument("--scan-id", required=True)
+    performance.set_defaults(func=cmd_performance_baseline)
 
     web = subparsers.add_parser("web", help="启动本地 Web Console")
     web.add_argument("--host", default="127.0.0.1", help="监听地址（仅允许 loopback）")

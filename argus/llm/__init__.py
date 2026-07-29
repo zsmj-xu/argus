@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
-from argus.llm.audit import append_audit, audit_path
+from argus.llm.audit import AuditLevel, append_audit, audit_path
 from argus.llm.client import AuditedLLM, LLMOutputTruncatedError
 
-__all__ = ["AuditedLLM", "LLMOutputTruncatedError", "append_audit", "audit_path"]
+__all__ = [
+    "AuditLevel",
+    "AuditedLLM",
+    "LLMOutputTruncatedError",
+    "append_audit",
+    "audit_path",
+]

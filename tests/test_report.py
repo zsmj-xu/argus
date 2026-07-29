@@ -132,6 +132,22 @@ def test_string_severity_and_confidence_do_not_crash() -> None:
     assert "置信度：** 高" in md
 
 
+def test_static_finding_report_separates_confidence_from_verification() -> None:
+    finding = cast(
+        Finding,
+        {
+            **_finding(title="Static SQL injection"),
+            "static_confidence": "high",
+            "verification_status": "unverified",
+        },
+    )
+
+    md = render_report([finding], _state())
+
+    assert "静态置信度：** 高" in md
+    assert "验证状态：** 未验证" in md
+
+
 def test_severity_counts_summary() -> None:
     findings = [
         _finding(fid="h1", title="H1", severity=Severity.HIGH),

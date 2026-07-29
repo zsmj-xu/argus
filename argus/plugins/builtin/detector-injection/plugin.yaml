@@ -1,0 +1,64 @@
+apiVersion: argus.security/v2
+kind: detector
+metadata:
+  id: detector.injection
+  version: 1.0.0
+entrypoint: argus.detection.builtin.injection.plugin:injection_detection_runtime
+consumes:
+  - capability: source.snapshot.v1
+    required: true
+  - capability: code.graph.codegraph.v1
+    required: true
+  - capability: security.graph.v1
+    required: false
+produces:
+  - capability: candidate.injection.index.v1
+    artifactType: candidate.index.v1
+    schemaVersion: "1.0"
+  - capability: candidate.injection.v1
+    artifactType: candidate.static.v1
+    schemaVersion: "1.0"
+    supplemental: true
+  - capability: graph.slice.injection.index.v1
+    artifactType: graph.slice.index.v1
+    schemaVersion: "1.0"
+  - capability: graph.slice.injection.v1
+    artifactType: graph.slice.v1
+    schemaVersion: "1.0"
+    supplemental: true
+  - capability: source.context.injection.index.v1
+    artifactType: source.context.index.v1
+    schemaVersion: "1.0"
+  - capability: source.context.injection.v1
+    artifactType: source.context.v1
+    schemaVersion: "1.0"
+    supplemental: true
+  - capability: assessment.injection.index.v1
+    artifactType: assessment.index.v1
+    schemaVersion: "1.0"
+  - capability: assessment.injection.v1
+    artifactType: assessment.static.v1
+    schemaVersion: "1.0"
+    supplemental: true
+  - capability: finding.static.injection.v2
+    artifactType: finding.static.v2
+    schemaVersion: "2.0"
+outputSchemas:
+  candidate.injection.index.v1: {type: array}
+  candidate.injection.v1: {type: object}
+  graph.slice.injection.index.v1: {type: array}
+  graph.slice.injection.v1: {type: object}
+  source.context.injection.index.v1: {type: array}
+  source.context.injection.v1: {type: object}
+  assessment.injection.index.v1: {type: array}
+  assessment.injection.v1: {type: object}
+  finding.static.injection.v2: {type: array}
+permissions:
+  source: read
+  network: llm
+  subprocess: none
+  secrets: llm
+runtime:
+  isolation: process
+  timeoutSeconds: 600
+maxAttempts: 2
