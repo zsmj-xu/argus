@@ -1,0 +1,54 @@
+services:
+  api:
+    build:
+      context: .
+      args:
+        OPENCODEREVIEW_VERSION: main
+        OPENCODEREVIEW_COMMIT: 1f5caf4d5b7d5324c6e4c836c971136e4010192e
+    image: argus-white-box:local
+    command: ["argus", "api", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "${ARGUS_BIND:-127.0.0.1}:8000:8000"
+    environment:
+      ARGUS_API_KEY: ${ARGUS_API_KEY:?set ARGUS_API_KEY}
+      ARGUS_DATA_DIR: /var/lib/argus
+      ARGUS_SCAN_DB: ${ARGUS_SCAN_DB:-}
+      ARGUS_LLM_BASE_URL: ${ARGUS_LLM_BASE_URL:?set ARGUS_LLM_BASE_URL}
+      ARGUS_LLM_API_KEY: ${ARGUS_LLM_API_KEY:?set ARGUS_LLM_API_KEY}
+      ARGUS_LLM_MODEL: ${ARGUS_LLM_MODEL:?set ARGUS_LLM_MODEL}
+      ARGUS_LLM_PROTOCOL: ${ARGUS_LLM_PROTOCOL:-openai}
+      OCR_BINARY: ${OCR_BINARY:-/usr/local/bin/ocr}
+    volumes:
+      - argus-service-data:/var/lib/argus
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3).read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  worker:
+    image: argus-white-box:local
+    depends_on:
+      api:
+        condition: service_healthy
+    command: ["argus", "worker"]
+    environment:
+      ARGUS_DATA_DIR: /var/lib/argus
+      ARGUS_SCAN_DB: ${ARGUS_SCAN_DB:-}
+      ARGUS_LLM_BASE_URL: ${ARGUS_LLM_BASE_URL:?set ARGUS_LLM_BASE_URL}
+      ARGUS_LLM_API_KEY: ${ARGUS_LLM_API_KEY:?set ARGUS_LLM_API_KEY}
+      ARGUS_LLM_MODEL: ${ARGUS_LLM_MODEL:?set ARGUS_LLM_MODEL}
+      ARGUS_LLM_PROTOCOL: ${ARGUS_LLM_PROTOCOL:-openai}
+      OCR_BINARY: ${OCR_BINARY:-/usr/local/bin/ocr}
+    volumes:
+      - argus-service-data:/var/lib/argus
+    healthcheck:
+      test: ["CMD", "python", "-c", "import time; from pathlib import Path; p=Path('/var/lib/argus/worker.heartbeat'); raise SystemExit(0 if p.is_file() and time.time()-p.stat().st_mtime < 90 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  argus-service-data:

@@ -1,1 +1,0 @@
-"""Immutable source snapshot creation."""

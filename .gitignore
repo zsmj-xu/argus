@@ -8,11 +8,9 @@ venv/
 .ruff_cache/
 
 # Argus runtime
+data/
 runs/
 .codegraph/
-.shannon/
-evaluation/targets/**/.git/
-.superpowers/
 
 # macOS metadata
 .DS_Store
