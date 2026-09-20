@@ -3,7 +3,7 @@ import os
 
 import pytest
 
-from argus.ocr_adapter import OCRComment, OCRRunResult, OCRStatus
+from argus.ocr_adapter import OCRComment, OCRCoverage, OCRRunResult, OCRScanResult, OCRStatus
 from argus.service.integration import (
     GitWorkspaceProvider,
     OpenCodeReviewServiceRunner,
@@ -72,6 +72,78 @@ def test_ocr_result_is_mapped_to_service_finding() -> None:
     assert fake_ocr.config is not None
     assert "简体中文" in fake_ocr.config.background
     assert scan.status is ScanStatus.QUEUED
+
+
+def test_service_runner_uses_v1_coverage_and_outcome_over_legacy_summary() -> None:
+    class V1OCR:
+        def run(self, *_args, **_kwargs) -> OCRRunResult:
+            return OCRRunResult(
+                status=OCRStatus.COMPLETE,
+                scan_result=OCRScanResult(
+                    schema_version="ocr.scan-result/v1",
+                    outcome=OCRStatus.PARTIAL,
+                    coverage=OCRCoverage(total=3, reviewed=2, failed=1, skipped=0),
+                ),
+                summary={"files_reviewed": 3, "total_files": 99},
+                warnings=("informational warning",),
+            )
+
+    store = ScanStore(":memory:")
+    store.create_scan(ScanCreateRequest(repository_url="https://example.com/repo.git"))
+    claimed = store.claim_next("worker-1")
+    assert claimed is not None
+    progress: list[object] = []
+    result = OpenCodeReviewServiceRunner(V1OCR(), token_budget=1000, timeout_minutes=2).run(
+        claimed,
+        Path("."),
+        progress.append,
+        lambda: False,
+    )
+
+    assert result.status is ScanStatus.PARTIAL
+    assert result.total_files == 3
+    assert result.reviewed_files == 2
+    assert result.failed_files == 1
+    assert result.skipped_files == 0
+    assert result.metadata["ocr_scan_schema_version"] == "ocr.scan-result/v1"
+    assert result.metadata["ocr_outcome"] == "partial"
+    assert result.metadata["ocr_coverage"] == {
+        "files_total": 3,
+        "files_reviewed": 2,
+        "files_failed": 1,
+        "files_skipped": 0,
+    }
+    assert result.metadata["ocr_warnings"] == ["engine_warning"]
+    assert progress[0].total_files == 3
+
+
+def test_service_runner_does_not_downgrade_v1_complete_for_warning() -> None:
+    class V1CompleteOCR:
+        def run(self, *_args, **_kwargs) -> OCRRunResult:
+            return OCRRunResult(
+                status=OCRStatus.COMPLETE,
+                scan_result=OCRScanResult(
+                    schema_version="ocr.scan-result/v1",
+                    outcome=OCRStatus.COMPLETE,
+                    coverage=OCRCoverage(total=1, reviewed=1, failed=0, skipped=0),
+                ),
+                warnings=("informational warning",),
+            )
+
+    store = ScanStore(":memory:")
+    store.create_scan(ScanCreateRequest(repository_url="https://example.com/repo.git"))
+    claimed = store.claim_next("worker-1")
+    assert claimed is not None
+    result = OpenCodeReviewServiceRunner(V1CompleteOCR(), token_budget=1000, timeout_minutes=2).run(
+        claimed,
+        Path("."),
+        lambda _progress: None,
+        lambda: False,
+    )
+
+    assert result.status is ScanStatus.COMPLETED
+    assert result.reviewed_files == 1
+    assert result.failed_files == 0
 
 
 def test_service_runner_preserves_background_and_appends_chinese_output_contract() -> None:

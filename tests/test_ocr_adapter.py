@@ -11,7 +11,9 @@ from typing import Any
 import pytest
 
 from argus.ocr_adapter import (
+    OCRCoverage,
     OCRScanConfig,
+    OCRScanResult,
     OCRSchemaError,
     OCRStatus,
     OpenCodeReviewRunner,
@@ -38,6 +40,27 @@ def _envelope(**overrides: Any) -> str:
         ],
         "warnings": [],
         "session_id": "session-123",
+    }
+    value.update(overrides)
+    return json.dumps(value)
+
+
+def _v1_envelope(**overrides: Any) -> str:
+    value: dict[str, Any] = {
+        "status": "success",
+        "summary": {"files_reviewed": 3, "comments": 1},
+        "comments": [],
+        "warnings": [],
+        "scan_result": {
+            "schema_version": "ocr.scan-result/v1",
+            "outcome": "complete",
+            "coverage": {
+                "files_total": 3,
+                "files_reviewed": 3,
+                "files_failed": 0,
+                "files_skipped": 0,
+            },
+        },
     }
     value.update(overrides)
     return json.dumps(value)
@@ -139,6 +162,60 @@ def test_success_runs_full_file_scan_and_normalizes_result(monkeypatch: pytest.M
     assert "pass_fds" not in kwargs
 
 
+def test_v1_scan_result_is_authoritative_over_legacy_summary(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    envelope = json.loads(_v1_envelope())
+    envelope["summary"] = {"files_reviewed": 3, "total_files": 99}
+    envelope["scan_result"] = {
+        "schema_version": "ocr.scan-result/v1",
+        "outcome": "partial",
+        "coverage": {"files_total": 3, "files_reviewed": 2, "files_failed": 1, "files_skipped": 0},
+    }
+    _patch_fake_popen(monkeypatch, _FakeProcess(json.dumps(envelope)))
+
+    result = OpenCodeReviewRunner().run(tmp_path)
+
+    assert result.status is OCRStatus.PARTIAL
+    assert result.scan_result == OCRScanResult(
+        schema_version="ocr.scan-result/v1",
+        outcome=OCRStatus.PARTIAL,
+        coverage=OCRCoverage(total=3, reviewed=2, failed=1, skipped=0),
+    )
+    assert result.summary == {"files_reviewed": 3, "total_files": 99}
+
+
+def test_v1_complete_with_warning_keeps_authoritative_outcome(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    envelope = json.loads(_v1_envelope())
+    envelope["status"] = "failed"
+    envelope["warnings"] = ["informational warning"]
+    _patch_fake_popen(monkeypatch, _FakeProcess(json.dumps(envelope)))
+
+    result = OpenCodeReviewRunner().run(tmp_path)
+
+    assert result.status is OCRStatus.COMPLETE
+    assert result.scan_result is not None
+    assert result.scan_result.outcome is OCRStatus.COMPLETE
+
+
+def test_v1_nonzero_exit_preserves_valid_result(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    envelope = json.loads(_v1_envelope())
+    envelope["scan_result"]["outcome"] = "partial"
+    envelope["scan_result"]["coverage"] = {
+        "files_total": 2,
+        "files_reviewed": 1,
+        "files_failed": 1,
+        "files_skipped": 0,
+    }
+    _patch_fake_popen(monkeypatch, _FakeProcess(json.dumps(envelope), returncode=17))
+
+    result = OpenCodeReviewRunner().run(tmp_path)
+
+    assert result.status is OCRStatus.FAILED
+    assert result.scan_result is not None
+    assert result.scan_result.outcome is OCRStatus.PARTIAL
+    assert result.scan_result.coverage.reviewed == 1
+    assert result.exit_code == 17
+
+
 def test_warning_envelope_is_partial_and_preserves_warning_data(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -151,6 +228,33 @@ def test_warning_envelope_is_partial_and_preserves_warning_data(
     assert result.status is OCRStatus.PARTIAL
     assert result.warnings == ("src/broken.py: agent failed",)
     assert len(result.comments) == 1
+
+
+@pytest.mark.parametrize(
+    "scan_result",
+    [
+        {"schema_version": "ocr.scan-result/v2", "outcome": "complete", "coverage": {}},
+        {
+            "schema_version": "ocr.scan-result/v1",
+            "outcome": "partial",
+            "coverage": {"files_total": 2, "files_reviewed": 1, "files_failed": 0, "files_skipped": 0},
+        },
+        {
+            "schema_version": "ocr.scan-result/v1",
+            "outcome": "complete",
+            "coverage": {"files_total": 2, "files_reviewed": 1, "files_failed": 1, "files_skipped": 0},
+        },
+        {
+            "schema_version": "ocr.scan-result/v1",
+            "outcome": "complete",
+            "coverage": {"files_total": 1, "files_reviewed": 1, "files_failed": 0, "files_skipped": 0},
+            "extra": True,
+        },
+    ],
+)
+def test_invalid_v1_scan_result_does_not_fall_back_to_legacy_status(scan_result: object) -> None:
+    with pytest.raises(OCRSchemaError, match="scan_result"):
+        parse_ocr_envelope({"status": "success", "comments": [], "scan_result": scan_result})
 
 
 def test_structured_warning_envelope_is_partial_and_safely_normalized() -> None:

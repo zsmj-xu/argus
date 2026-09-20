@@ -30,7 +30,7 @@ from .store import WorkerScan
 
 
 _COMMIT = re.compile(r"^[0-9a-fA-F]{40,64}$")
-_DEFAULT_OCR_COMMIT = "1f5caf4d5b7d5324c6e4c836c971136e4010192e"
+_DEFAULT_OCR_COMMIT = "072808b6b0b12a1408b31889539c03878eff0f61"
 _SIMPLIFIED_CHINESE_REVIEW_INSTRUCTION = (
     "输出要求：所有审查结论、问题说明和自然语言修复建议必须使用简体中文。"
     "源码、代码标识符、文件路径、规则分类和风险等级保持原样，不要翻译代码。"
@@ -845,42 +845,58 @@ class OpenCodeReviewServiceRunner:
         )
 
         comments = [_finding_from_comment(comment) for comment in result.comments]
+        scan_result = result.scan_result
         summary = _safe_ocr_summary(result.summary)
-        reviewed_value = _coverage_value(summary, "reviewed_files", "files_reviewed")
-        reviewed = reviewed_value if reviewed_value is not None else 0
-        total = _coverage_value(summary, "total_files", "files_total")
-        failed = _coverage_value(summary, "failed_files", "files_failed") or 0
-        skipped = _coverage_value(summary, "skipped_files", "files_skipped") or 0
+        reviewed_value: int | None
+        reviewed: int
+        total: int | None
+        failed: int
+        skipped: int
+        if scan_result is not None:
+            reviewed_value = scan_result.coverage.reviewed
+            reviewed = scan_result.coverage.reviewed
+            total = scan_result.coverage.total
+            failed = scan_result.coverage.failed
+            skipped = scan_result.coverage.skipped
+        else:
+            reviewed_value = _coverage_value(summary, "reviewed_files", "files_reviewed")
+            reviewed = reviewed_value if reviewed_value is not None else 0
+            total = _coverage_value(summary, "total_files", "files_total")
+            failed = _coverage_value(summary, "failed_files", "files_failed") or 0
+            skipped = _coverage_value(summary, "skipped_files", "files_skipped") or 0
         warning_count = _warning_count(result.warnings)
         warning_categories = _safe_ocr_warning_categories(result.warnings)
         try:
             ocr_status = result.status if isinstance(result.status, OCRStatus) else OCRStatus(result.status)
         except (TypeError, ValueError):
             ocr_status = OCRStatus.FAILED
+        if scan_result is not None and ocr_status is not OCRStatus.FAILED:
+            ocr_status = scan_result.outcome
         safe_error: str | None = None
-        if ocr_status is OCRStatus.COMPLETE and reviewed_value is None:
+        if scan_result is None and ocr_status is OCRStatus.COMPLETE and reviewed_value is None:
             warning_categories.append("incomplete_coverage")
             ocr_status = OCRStatus.PARTIAL
             safe_error = "ocr_incomplete_coverage"
-        if ocr_status is OCRStatus.COMPLETE and warning_count:
+        if scan_result is None and ocr_status is OCRStatus.COMPLETE and warning_count:
             ocr_status = OCRStatus.PARTIAL
         if ocr_status is OCRStatus.FAILED:
             safe_error = _safe_ocr_error(result)
         if ocr_status is OCRStatus.PARTIAL and safe_error is None and getattr(result, "canceled", False):
             safe_error = "ocr_canceled"
         accounted = reviewed + failed + skipped
-        if total is not None and total < accounted:
-            total = None
-            warning_categories.append("inconsistent_coverage")
-            if ocr_status is OCRStatus.COMPLETE:
+        if scan_result is None:
+            if total is not None and total < accounted:
+                total = None
+                warning_categories.append("inconsistent_coverage")
+                if ocr_status is OCRStatus.COMPLETE:
+                    ocr_status = OCRStatus.PARTIAL
+                    safe_error = "ocr_incomplete_coverage"
+            if ocr_status is OCRStatus.COMPLETE and (failed or skipped or (total is not None and total > accounted)):
                 ocr_status = OCRStatus.PARTIAL
+                warning_categories.append("incomplete_coverage")
                 safe_error = "ocr_incomplete_coverage"
-        if ocr_status is OCRStatus.COMPLETE and (failed or skipped or (total is not None and total > accounted)):
-            ocr_status = OCRStatus.PARTIAL
-            warning_categories.append("incomplete_coverage")
-            safe_error = "ocr_incomplete_coverage"
-        if total is None and ocr_status is OCRStatus.COMPLETE:
-            total = accounted
+            if total is None and ocr_status is OCRStatus.COMPLETE:
+                total = accounted
         # A partial result only tells us what was processed.  It cannot
         # establish how much unreviewed work remains.  Legacy counters use 0
         # for unknown totals; the observation API exposes null explicitly.
@@ -898,6 +914,18 @@ class OpenCodeReviewServiceRunner:
         session_id = _safe_identifier(result.session_id)
         metadata = {
             "ocr_status": ocr_status.value,
+            "ocr_scan_schema_version": scan_result.schema_version if scan_result is not None else None,
+            "ocr_outcome": scan_result.outcome.value if scan_result is not None else None,
+            "ocr_coverage": (
+                {
+                    "files_total": total,
+                    "files_reviewed": reviewed,
+                    "files_failed": failed,
+                    "files_skipped": skipped,
+                }
+                if scan_result is not None
+                else None
+            ),
             "ocr_summary": summary,
             "ocr_warnings": warning_categories,
             "ocr_warning_count": warning_count,

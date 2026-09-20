@@ -36,6 +36,25 @@ class OCRStatus(str, Enum):
 
 
 @dataclass(frozen=True)
+class OCRCoverage:
+    """Authoritative file-level coverage from ``ocr.scan-result/v1``."""
+
+    total: int
+    reviewed: int
+    failed: int
+    skipped: int
+
+
+@dataclass(frozen=True)
+class OCRScanResult:
+    """Versioned terminal result from the OCR engine."""
+
+    schema_version: str
+    outcome: OCRStatus
+    coverage: OCRCoverage
+
+
+@dataclass(frozen=True)
 class OCRScanConfig:
     """Arguments accepted by the OCR full-file scanner.
 
@@ -137,10 +156,11 @@ class OCRRunResult:
     canceled: bool = False
     error: str | None = None
     envelope: Mapping[str, Any] | None = None
+    scan_result: OCRScanResult | None = None
 
     @property
     def complete(self) -> bool:
-        """Whether OCR completed every selected item without warnings."""
+        """Whether the normalized OCR result is complete."""
 
         return self.status is OCRStatus.COMPLETE
 
@@ -260,6 +280,9 @@ _KNOWN_COMPLETE = {"success", "complete", "completed"}
 _KNOWN_PARTIAL = {"completed_with_warnings", "completed_with_errors", "partial"}
 _KNOWN_SKIPPED = {"skipped"}
 _KNOWN_FAILED = {"failed", "failure", "error"}
+_SCAN_RESULT_SCHEMA = "ocr.scan-result/v1"
+_SCAN_RESULT_FIELDS = {"schema_version", "outcome", "coverage"}
+_SCAN_RESULT_COVERAGE_FIELDS = {"files_total", "files_reviewed", "files_failed", "files_skipped"}
 _MAX_COMMENT_COUNT = 10_000
 _MAX_WARNING_COUNT = 1_000
 _MAX_COMMENT_TEXT = 20_000
@@ -602,6 +625,50 @@ def _normalize_warning(value: object) -> str | dict[str, str]:
     return normalized_warning
 
 
+def _nonnegative_coverage_integer(value: object, field_name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise OCRSchemaError(f"OCR scan_result {field_name} must be a non-negative integer")
+    return value
+
+
+def _parse_scan_result(document: Mapping[str, Any]) -> OCRScanResult | None:
+    """Parse the optional authoritative ``ocr.scan-result/v1`` object."""
+
+    if "scan_result" not in document:
+        return None
+    raw_result = document["scan_result"]
+    if not isinstance(raw_result, Mapping):
+        raise OCRSchemaError("OCR scan_result must be an object")
+    if set(raw_result) != _SCAN_RESULT_FIELDS:
+        raise OCRSchemaError("OCR scan_result has unsupported or missing fields")
+    if raw_result.get("schema_version") != _SCAN_RESULT_SCHEMA:
+        raise OCRSchemaError("unsupported OCR scan_result schema version")
+    raw_outcome = raw_result.get("outcome")
+    if not isinstance(raw_outcome, str) or raw_outcome not in {status.value for status in OCRStatus}:
+        raise OCRSchemaError("OCR scan_result outcome is invalid")
+    raw_coverage = raw_result.get("coverage")
+    if not isinstance(raw_coverage, Mapping) or set(raw_coverage) != _SCAN_RESULT_COVERAGE_FIELDS:
+        raise OCRSchemaError("OCR scan_result coverage has unsupported or missing fields")
+    coverage = OCRCoverage(
+        total=_nonnegative_coverage_integer(raw_coverage["files_total"], "files_total"),
+        reviewed=_nonnegative_coverage_integer(raw_coverage["files_reviewed"], "files_reviewed"),
+        failed=_nonnegative_coverage_integer(raw_coverage["files_failed"], "files_failed"),
+        skipped=_nonnegative_coverage_integer(raw_coverage["files_skipped"], "files_skipped"),
+    )
+    if coverage.total != coverage.reviewed + coverage.failed + coverage.skipped:
+        raise OCRSchemaError("OCR scan_result coverage is not accounted")
+    outcome = OCRStatus(raw_outcome)
+    if outcome is OCRStatus.COMPLETE and (
+        coverage.total == 0 or coverage.reviewed != coverage.total or coverage.failed or coverage.skipped
+    ):
+        raise OCRSchemaError("complete OCR scan_result coverage is incomplete")
+    if outcome is OCRStatus.SKIPPED and (
+        coverage.reviewed or coverage.failed or (coverage.total and coverage.skipped != coverage.total)
+    ):
+        raise OCRSchemaError("skipped OCR scan_result coverage is inconsistent")
+    return OCRScanResult(schema_version=_SCAN_RESULT_SCHEMA, outcome=outcome, coverage=coverage)
+
+
 def parse_ocr_envelope(
     document: object,
 ) -> tuple[
@@ -617,20 +684,24 @@ def parse_ocr_envelope(
 
     if not isinstance(document, Mapping):
         raise OCRSchemaError("OCR JSON output must be a top-level object")
+    scan_result = _parse_scan_result(document)
     raw_status = document.get("status")
-    if not isinstance(raw_status, str):
+    if scan_result is not None:
+        status = scan_result.outcome
+    elif not isinstance(raw_status, str):
         raise OCRSchemaError("OCR JSON output must contain a string status")
-    status_value = raw_status.strip().lower()
-    if status_value in _KNOWN_COMPLETE:
-        status = OCRStatus.COMPLETE
-    elif status_value in _KNOWN_PARTIAL:
-        status = OCRStatus.PARTIAL
-    elif status_value in _KNOWN_SKIPPED:
-        status = OCRStatus.SKIPPED
-    elif status_value in _KNOWN_FAILED:
-        status = OCRStatus.FAILED
     else:
-        raise OCRSchemaError("unsupported OCR status")
+        status_value = raw_status.strip().lower()
+        if status_value in _KNOWN_COMPLETE:
+            status = OCRStatus.COMPLETE
+        elif status_value in _KNOWN_PARTIAL:
+            status = OCRStatus.PARTIAL
+        elif status_value in _KNOWN_SKIPPED:
+            status = OCRStatus.SKIPPED
+        elif status_value in _KNOWN_FAILED:
+            status = OCRStatus.FAILED
+        else:
+            raise OCRSchemaError("unsupported OCR status")
 
     if "comments" not in document:
         raise OCRSchemaError("OCR JSON output must contain a comments array")
@@ -650,7 +721,7 @@ def parse_ocr_envelope(
     for item in raw_warnings:
         warnings_list.append(_normalize_warning(item))
     warnings = tuple(warnings_list)
-    if status is OCRStatus.COMPLETE and warnings:
+    if scan_result is None and status is OCRStatus.COMPLETE and warnings:
         status = OCRStatus.PARTIAL
 
     summary = document.get("summary")
@@ -880,6 +951,7 @@ class OpenCodeReviewRunner:
             )
         assert parsed is not None
         status, comments, warnings, summary, session_id, message, llm = parsed
+        scan_result = _parse_scan_result(envelope) if envelope is not None else None
         try:
             _emit_event(
                 callback,
@@ -899,7 +971,7 @@ class OpenCodeReviewRunner:
                 error=_EVENT_CALLBACK_ERROR,
                 envelope=envelope,
             )
-        if status is OCRStatus.COMPLETE and warnings:
+        if scan_result is None and status is OCRStatus.COMPLETE and warnings:
             status = OCRStatus.PARTIAL
         if process.exit_code not in (0, None):
             status = OCRStatus.FAILED
@@ -919,6 +991,7 @@ class OpenCodeReviewRunner:
             exit_code=process.exit_code,
             error=error,
             envelope=envelope,
+            scan_result=scan_result,
         )
 
     # ``scan`` makes the service-facing verb explicit while keeping ``run``
@@ -1671,12 +1744,12 @@ OCRRunner = OpenCodeReviewRunner
 OCRAdapter = OpenCodeReviewRunner
 OpenCodeReviewAdapter = OpenCodeReviewRunner
 OCRResult = OCRRunResult
-OCRScanResult = OCRRunResult
 
 
 __all__ = [
     "OCRAdapter",
     "OCRComment",
+    "OCRCoverage",
     "OCRRunResult",
     "OCRResult",
     "OCRRunner",
