@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 from pathlib import Path
 import subprocess
@@ -42,14 +43,41 @@ def _envelope(**overrides: Any) -> str:
     return json.dumps(value)
 
 
+class _FakeProcess:
+    def __init__(self, stdout: str | bytes = b"", stderr: str | bytes = b"", returncode: int | None = 0) -> None:
+        self.stdout = io.BytesIO(stdout.encode() if isinstance(stdout, str) else stdout)
+        self.stderr = io.BytesIO(stderr.encode() if isinstance(stderr, str) else stderr)
+        self.returncode = returncode
+        self.killed = False
+        self.pid = None
+
+    def poll(self) -> int | None:
+        return self.returncode
+
+    def wait(self) -> int | None:
+        return self.returncode
+
+    def kill(self) -> None:
+        self.killed = True
+        self.returncode = -9
+
+
+def _patch_fake_popen(
+    monkeypatch: pytest.MonkeyPatch,
+    process: _FakeProcess,
+    calls: list[tuple[list[str], dict[str, Any]]] | None = None,
+) -> None:
+    def fake_popen(argv: list[str], **kwargs: Any) -> _FakeProcess:
+        if calls is not None:
+            calls.append((argv, kwargs))
+        return process
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+
+
 def test_success_runs_full_file_scan_and_normalizes_result(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     calls: list[tuple[list[str], dict[str, Any]]] = []
-
-    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-        calls.append((argv, kwargs))
-        return subprocess.CompletedProcess(argv, 0, _envelope(), "ocr diagnostics")
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
+    _patch_fake_popen(monkeypatch, _FakeProcess(_envelope(), "ocr diagnostics"), calls)
     runner = OpenCodeReviewRunner("/opt/ocr-main/ocr")
     result = runner.run(
         tmp_path,
@@ -102,24 +130,22 @@ def test_success_runs_full_file_scan_and_normalizes_result(monkeypatch: pytest.M
     ]
     assert kwargs["cwd"] == str(tmp_path.resolve())
     assert kwargs["shell"] is False
-    assert kwargs["capture_output"] is True
-    assert kwargs["text"] is True
-    assert kwargs["timeout"] == 42
-    assert kwargs["check"] is False
+    assert kwargs["stdin"] is subprocess.DEVNULL
+    assert kwargs["stdout"] is subprocess.PIPE
+    assert kwargs["stderr"] is subprocess.PIPE
+    assert kwargs["text"] is False
+    assert kwargs["bufsize"] == 0
+    assert kwargs["start_new_session"] is True
+    assert "pass_fds" not in kwargs
 
 
 def test_warning_envelope_is_partial_and_preserves_warning_data(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-        return subprocess.CompletedProcess(
-            argv,
-            0,
-            _envelope(status="completed_with_warnings", warnings=["src/broken.py: agent failed"]),
-            "",
-        )
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
+    _patch_fake_popen(
+        monkeypatch,
+        _FakeProcess(_envelope(status="completed_with_warnings", warnings=["src/broken.py: agent failed"])),
+    )
     result = OpenCodeReviewRunner().run(tmp_path)
 
     assert result.status is OCRStatus.PARTIAL
@@ -127,7 +153,49 @@ def test_warning_envelope_is_partial_and_preserves_warning_data(
     assert len(result.comments) == 1
 
 
-def test_actual_comment_thinking_and_llm_fields_are_preserved() -> None:
+def test_structured_warning_envelope_is_partial_and_safely_normalized() -> None:
+    status, _comments, warnings, _summary, _session_id, _message, _llm = parse_ocr_envelope(
+        {
+            "status": "success",
+            "comments": [],
+            "warnings": [
+                {
+                    "type": "token_budget_reached",
+                    "file": "src/main.go",
+                    "message": "dispatch stopped before the next file",
+                }
+            ],
+        }
+    )
+
+    assert status is OCRStatus.PARTIAL
+    assert warnings == (
+        {
+            "type": "token_budget_reached",
+            "file": "src/main.go",
+            "message": "dispatch stopped before the next file",
+        },
+    )
+
+
+@pytest.mark.parametrize(
+    "warning",
+    [
+        {"type": "safe", "source": "PRIVATE"},
+        {"file": "../secret.py", "message": "failed"},
+        {"type": "x" * 129},
+        {"message": "x" * 2001},
+        {"message": "line one\nline two"},
+        {"file": ["not", "a", "path"]},
+        {},
+    ],
+)
+def test_structured_warning_rejects_unsafe_shapes(warning: object) -> None:
+    with pytest.raises(OCRSchemaError, match="OCR warning"):
+        parse_ocr_envelope({"status": "success", "comments": [], "warnings": [warning]})
+
+
+def test_reasoning_is_discarded_but_llm_identity_is_preserved() -> None:
     status, comments, warnings, summary, session_id, message, llm = parse_ocr_envelope(
         {
             "status": "success",
@@ -141,14 +209,14 @@ def test_actual_comment_thinking_and_llm_fields_are_preserved() -> None:
                     "content": "Use a safer parser.",
                     "start_line": 10,
                     "end_line": 10,
-                    "thinking": "The input reaches the parser without validation.",
+                    "thinking": "Private reasoning. " * 2000,
                 }
             ],
         }
     )
 
     assert status is OCRStatus.PARTIAL
-    assert comments[0].thinking == "The input reaches the parser without validation."
+    assert comments[0].thinking is None
     assert warnings == ("one file was skipped",)
     assert summary == {"files_reviewed": 1, "comments": 1}
     assert session_id == "sess-1"
@@ -212,6 +280,27 @@ def test_missing_comments_is_rejected_as_malformed_envelope() -> None:
         parse_ocr_envelope({"status": "success"})
 
 
+def test_schema_failure_code_identifies_field_without_echoing_value(monkeypatch, tmp_path) -> None:
+    import argus.ocr_adapter as adapter
+
+    output = json.dumps({"status": "complete", "comments": [{"path": "a.py", "content": "PRIVATE" * 4000}]})
+    monkeypatch.setattr(
+        OpenCodeReviewRunner,
+        "_invoke",
+        lambda *args, **kwargs: adapter._ProcessResult(
+            stdout=output,
+            stderr="",
+            exit_code=0,
+            timed_out=False,
+        ),
+    )
+    events = []
+    result = OpenCodeReviewRunner().run(tmp_path, event_callback=events.append)
+    assert result.status is OCRStatus.FAILED
+    assert any(event["code"] == "invalid_schema_content_too_long" for event in events)
+    assert "PRIVATE" not in json.dumps(events)
+
+
 def test_ocr_comment_payload_limits_are_enforced() -> None:
     with pytest.raises(OCRSchemaError, match="maximum length"):
         normalize_comment({"path": "a.py", "content": "x" * 20_001})
@@ -225,10 +314,7 @@ def test_ocr_comment_payload_limits_are_enforced() -> None:
 
 
 def test_malformed_json_becomes_failed_with_process_evidence(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-        return subprocess.CompletedProcess(argv, 0, "{not-json", "warning from ocr")
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
+    _patch_fake_popen(monkeypatch, _FakeProcess("{not-json", "warning from ocr"))
     result = OpenCodeReviewRunner().run(tmp_path)
 
     assert result.status is OCRStatus.FAILED
@@ -238,16 +324,29 @@ def test_malformed_json_becomes_failed_with_process_evidence(monkeypatch: pytest
     assert "invalid OCR JSON output" in result.error
 
 
-def test_timeout_is_failed_and_captures_partial_streams(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-        raise subprocess.TimeoutExpired(argv, kwargs["timeout"], output=b"partial stdout", stderr=b"partial stderr")
+def test_schema_parse_error_uses_generic_event_and_result_messages(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _patch_fake_popen(monkeypatch, _FakeProcess(json.dumps({"status": "provider-secret", "comments": []})))
+    events: list[dict[str, Any]] = []
 
-    monkeypatch.setattr(subprocess, "run", fake_run)
-    result = OpenCodeReviewRunner().run(tmp_path, OCRScanConfig(process_timeout_seconds=3))
+    result = OpenCodeReviewRunner().run(tmp_path, event_callback=events.append)
+
+    assert result.status is OCRStatus.FAILED
+    assert result.error == "invalid OCR JSON schema"
+    assert "provider-secret" not in result.error
+    assert [event["type"] for event in events][-2:] == ["ocr.parse_started", "ocr.parse_error"]
+    assert all("provider-secret" not in json.dumps(event) for event in events)
+
+
+def test_timeout_is_failed_and_captures_partial_streams(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    process = _FakeProcess(b"partial stdout", b"partial stderr", returncode=None)
+    _patch_fake_popen(monkeypatch, process)
+    result = OpenCodeReviewRunner().run(tmp_path, OCRScanConfig(process_timeout_seconds=0.03))
 
     assert result.status is OCRStatus.FAILED
     assert result.timed_out
-    assert result.exit_code is None
+    assert result.exit_code == -9
     assert result.stdout == "partial stdout"
     assert result.stderr == "partial stderr"
 
@@ -258,12 +357,13 @@ def test_argv_omits_unconfigured_options() -> None:
 
 def test_runner_accepts_repo_dir_keyword_and_is_callable(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     calls: list[list[str]] = []
+    process = _FakeProcess(_envelope())
 
-    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+    def fake_popen(argv: list[str], **kwargs: Any) -> _FakeProcess:
         calls.append(argv)
-        return subprocess.CompletedProcess(argv, 0, _envelope(), "")
+        return process
 
-    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
     result = OpenCodeReviewRunner().scan(repo_dir=tmp_path)
 
     assert result.status is OCRStatus.COMPLETE
@@ -307,10 +407,7 @@ def test_comments_without_location_are_valid() -> None:
 
 
 def test_nonzero_exit_is_failed_even_when_json_is_valid(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-        return subprocess.CompletedProcess(argv, 1, _envelope(status="completed_with_warnings"), "fatal")
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
+    _patch_fake_popen(monkeypatch, _FakeProcess(_envelope(status="completed_with_warnings"), "fatal", returncode=1))
     result = OpenCodeReviewRunner().run(tmp_path)
 
     assert result.status is OCRStatus.FAILED
@@ -319,22 +416,8 @@ def test_nonzero_exit_is_failed_even_when_json_is_valid(monkeypatch: pytest.Monk
 
 
 def test_cancel_check_kills_running_ocr_process(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    class FakeProcess:
-        returncode: int | None = None
-        killed = False
-
-        def poll(self) -> int | None:
-            return self.returncode
-
-        def kill(self) -> None:
-            self.killed = True
-            self.returncode = -9
-
-        def communicate(self) -> tuple[str, str]:
-            return "", ""
-
-    process = FakeProcess()
-    monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: process)
+    process = _FakeProcess(returncode=None)
+    _patch_fake_popen(monkeypatch, process)
     result = OpenCodeReviewRunner("ocr").run(
         tmp_path,
         OCRScanConfig(process_timeout_seconds=10),

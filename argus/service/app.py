@@ -4,17 +4,23 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import os
 from pathlib import Path
+import re
 import shutil
 from typing import Annotated, Callable, TypeVar
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Response, status
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Response, Security, status
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.staticfiles import StaticFiles
 
 from .models import (
     ReportFormat,
     ScanCreateRequest,
+    ScanDiagnosticsResponse,
+    ScanEventsResponse,
     ScanListResponse,
     ScanReport,
     ScanResponse,
@@ -46,17 +52,23 @@ def create_app(store: ScanStore | None = None) -> FastAPI:
     )
     app.state.scan_store = store
 
-    def require_auth(authorization: Annotated[str | None, Header()] = None) -> None:
+    bearer_scheme = HTTPBearer(
+        auto_error=False,
+        scheme_name="BearerAuth",
+        description="Use the Argus API key as a Bearer token.",
+    )
+
+    def require_auth(credentials: HTTPAuthorizationCredentials | None = Security(bearer_scheme)) -> None:
         expected = os.getenv("ARGUS_API_KEY")
         if not expected:
             raise HTTPException(status_code=503, detail="ARGUS_API_KEY is not configured")
-        if not authorization or not authorization.lower().startswith("bearer "):
+        if credentials is None or credentials.scheme.lower() != "bearer":
             raise HTTPException(
                 status_code=401,
                 detail="Bearer API key required",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        supplied = authorization[7:].strip()
+        supplied = credentials.credentials.strip()
         if not supplied or not hmac.compare_digest(
             hashlib.sha256(supplied.encode("utf-8")).digest(),
             hashlib.sha256(expected.encode("utf-8")).digest(),
@@ -69,9 +81,30 @@ def create_app(store: ScanStore | None = None) -> FastAPI:
 
     auth = Depends(require_auth)
 
-    @app.get("/", include_in_schema=False)
-    def index() -> HTMLResponse:
-        return HTMLResponse(_INDEX_HTML)
+    frontend_dir = os.getenv("ARGUS_FRONTEND_DIR")
+    dist_path = (
+        Path(frontend_dir).resolve() if frontend_dir else Path(__file__).resolve().parents[2] / "frontend" / "dist"
+    )
+    if (dist_path / "index.html").is_file():
+        assets_dir = dist_path / "assets"
+        if assets_dir.is_dir():
+            app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+
+        @app.get("/shield.svg", include_in_schema=False)
+        def shield_svg() -> Response:
+            shield_file = dist_path / "shield.svg"
+            if shield_file.is_file():
+                return FileResponse(shield_file)
+            raise HTTPException(status_code=404)
+
+        @app.get("/", include_in_schema=False)
+        def index() -> Response:
+            return FileResponse(dist_path / "index.html")
+    else:
+
+        @app.get("/", include_in_schema=False)
+        def index() -> HTMLResponse:
+            return HTMLResponse(_INDEX_HTML)
 
     @app.get("/healthz", include_in_schema=False)
     def healthz() -> dict[str, str]:
@@ -119,6 +152,8 @@ def create_app(store: ScanStore | None = None) -> FastAPI:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except QueueFull as exc:
             raise HTTPException(status_code=429, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         if not created:
             response.status_code = status.HTTP_200_OK
         return scan
@@ -138,6 +173,50 @@ def create_app(store: ScanStore | None = None) -> FastAPI:
     @app.get("/v1/scans/{scan_id}", response_model=ScanResponse, dependencies=[auth])
     def get_scan(scan_id: str) -> ScanResponse:
         return _not_found(lambda: store.get_scan(scan_id))
+
+    @app.get(
+        "/v1/scans/{scan_id}/events",
+        response_model=ScanEventsResponse,
+        dependencies=[auth],
+    )
+    def get_events(
+        scan_id: str,
+        after: int = Query(default=0),
+        limit: int = Query(default=100),
+    ) -> ScanEventsResponse:
+        if after < 0 or limit < 1 or limit > 500:
+            raise HTTPException(
+                status_code=400, detail="after must be non-negative and limit must be between 1 and 500"
+            )
+        try:
+            return ScanEventsResponse.model_validate(store.list_events(scan_id, after=after, limit=limit))
+        except ScanNotFound as exc:
+            raise HTTPException(status_code=404, detail="scan not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get(
+        "/v1/scans/{scan_id}/diagnostics",
+        response_model=ScanDiagnosticsResponse,
+        dependencies=[auth],
+    )
+    def get_diagnostics(scan_id: str) -> ScanDiagnosticsResponse:
+        return _not_found(lambda: store.get_diagnostics(scan_id))
+
+    @app.get("/v1/scans/{scan_id}/diagnostics/export", dependencies=[auth])
+    @app.get("/v1/scans/{scan_id}/export", dependencies=[auth])
+    def export_diagnostics(scan_id: str) -> Response:
+        try:
+            document = store.export_diagnostics(scan_id)
+        except ScanNotFound as exc:
+            raise HTTPException(status_code=404, detail="scan not found") from exc
+        content = json.dumps(document, ensure_ascii=False, indent=2, sort_keys=True)
+        safe_id = re.sub(r"[^A-Za-z0-9_-]", "", scan_id)[:64] or "scan"
+        return Response(
+            content=content,
+            media_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="argus-{safe_id}-diagnostics.json"'},
+        )
 
     @app.get(
         "/v1/scans/{scan_id}/findings",

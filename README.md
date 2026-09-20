@@ -15,6 +15,18 @@ docker compose up --build -d
 
 API 默认监听 `127.0.0.1:8000`。内网反向代理或受控网络入口可以通过 `ARGUS_BIND` 暴露它。
 
+镜像构建会使用固定 lockfile 编译 React 前端，并由 FastAPI 在根路径 `/` 托管。
+本地开发前端时先启动后端，再运行：
+
+```bash
+cd frontend
+pnpm install --frozen-lockfile
+pnpm run dev
+```
+
+开发服务器监听 `127.0.0.1:5173`，并将 `/v1`、`/healthz` 和 `/readyz`
+代理到 `127.0.0.1:8000`。生产入口仍为 `http://127.0.0.1:8000/`。
+
 必需配置：
 
 ```dotenv
@@ -71,13 +83,30 @@ curl -H "Authorization: Bearer $ARGUS_API_KEY" \
 
 - `POST /v1/scans`：提交扫描，返回 `202`；相同 `Idempotency-Key` 会复用原任务；
 - `GET /v1/scans`：查看扫描列表；
-- `GET /v1/scans/{id}`：查看状态、commit、阶段、覆盖率和错误；
+- `GET /v1/scans/{id}`：查看状态、commit、阶段、兼容覆盖率、observation 和错误；
+- `GET /v1/scans/{id}/events?after=&limit=`：认证后按游标增量读取有界事件；
+- `GET /v1/scans/{id}/diagnostics` 与 `GET /v1/scans/{id}/diagnostics/export`：读取或导出脱敏诊断；
 - `GET /v1/scans/{id}/findings`：查看静态发现；
 - `GET /v1/scans/{id}/report?format=json|markdown|sarif`：下载报告；
 - `POST /v1/scans/{id}/cancel`：取消排队或执行中的任务；
 - `POST /v1/scans/{id}/retry`：重试失败、部分完成、取消或跳过的任务。
 
 状态包括 `queued`、`running`、`completed`、`partial`、`failed`、`canceled` 和 `skipped`。部分覆盖会明确记录原因，不会被报告为完整扫描。
+
+## 可观测性与排障
+
+认证客户端在扫描处于 `queued` 或 `running` 时每 2 秒轮询详情和事件；
+报告下载也必须带 `Authorization: Bearer <ARGUS_API_KEY>`，浏览器端按 Blob
+处理。API Key 只在内存中使用，不能写入 URL、浏览器存储、日志或导出文件。
+没有结构化 OCR 覆盖率时必须显示未知进度，不能用心跳、输出字节数、耗时或
+`/models` 的 `200` 响应伪造百分比或推断生成成功。
+
+心跳、OCR 输出活动和结构化进度是三个不同信号；120/300 秒无活动只产生
+诊断警告，不直接失败扫描，外层 OCR 进程默认 30 分钟截止时间才是硬超时。
+事件保留默认 14 天、每次尝试最多 10,000 条，单条序列化 payload 最多 8 KiB，
+并且不回填旧扫描历史。详见
+[observability.md](docs/observability.md) 和
+[ocr-events-v1.md](docs/ocr-events-v1.md)。
 
 ## 输入与安全边界
 

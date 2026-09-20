@@ -7,15 +7,17 @@ the service core can use it as a replaceable scanning backend.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 import json
 import math
 import os
 from pathlib import Path, PurePosixPath
+import queue
 import re
 import signal
 import subprocess
+import threading
 import time
 from typing import Any, Callable, Mapping, Sequence
 
@@ -150,7 +152,107 @@ class _ProcessResult:
     exit_code: int | None
     timed_out: bool
     canceled: bool = False
+    output_limited: bool = False
     error: str | None = None
+
+
+@dataclass
+class _InvocationOutcome:
+    """Internal outcome from the bounded process monitor."""
+
+    timed_out: bool = False
+    canceled: bool = False
+    output_limited: bool = False
+    force_kill: bool = False
+    error: str | None = None
+
+
+@dataclass
+class _ProcessCapture:
+    """Bounded, thread-safe process capture state.
+
+    The child is never allowed to make the parent retain more than one bounded
+    buffer per output stream.  Byte counters are intentionally separate from
+    the buffers so activity reporting remains safe even after a limit is hit.
+    """
+
+    limit: int
+    stdout: bytearray = field(default_factory=bytearray)
+    stderr: bytearray = field(default_factory=bytearray)
+    stdout_bytes: int = 0
+    stderr_bytes: int = 0
+    event_bytes: int = 0
+    structured_events_seen: int = 0
+    structured_events_forwarded: int = 0
+    structured_events_rejected: int = 0
+    structured_events_dropped: int = 0
+    output_limited: bool = False
+    stream_reader_error: bool = False
+    event_reader_error: bool = False
+    lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def append_stream(self, stream_name: str, chunk: bytes) -> None:
+        with self.lock:
+            if stream_name == "stdout":
+                previous = self.stdout_bytes
+                self.stdout_bytes += len(chunk)
+                buffer = self.stdout
+            else:
+                previous = self.stderr_bytes
+                self.stderr_bytes += len(chunk)
+                buffer = self.stderr
+            remaining = max(self.limit - previous, 0)
+            if remaining:
+                buffer.extend(chunk[:remaining])
+            if len(chunk) > remaining:
+                self.output_limited = True
+
+    def append_event_bytes(self, size: int) -> None:
+        with self.lock:
+            self.event_bytes += size
+
+    def record_structured_event(self, *, forwarded: bool) -> None:
+        with self.lock:
+            self.structured_events_seen += 1
+            if forwarded:
+                self.structured_events_forwarded += 1
+            else:
+                self.structured_events_rejected += 1
+
+    def reject_structured_event(self) -> None:
+        with self.lock:
+            self.structured_events_rejected += 1
+
+    def drop_structured_event(self) -> None:
+        with self.lock:
+            self.structured_events_dropped += 1
+
+    def mark_stream_reader_error(self) -> None:
+        with self.lock:
+            self.stream_reader_error = True
+
+    def mark_event_reader_error(self) -> None:
+        with self.lock:
+            self.event_reader_error = True
+
+    def flags(self) -> tuple[bool, bool]:
+        with self.lock:
+            return self.output_limited, self.stream_reader_error
+
+    def counters(self) -> dict[str, int]:
+        with self.lock:
+            return {
+                "stdout_bytes": self.stdout_bytes,
+                "stderr_bytes": self.stderr_bytes,
+                "event_bytes": self.event_bytes,
+                "structured_events": self.structured_events_forwarded,
+                "structured_events_rejected": self.structured_events_rejected,
+                "structured_events_dropped": self.structured_events_dropped,
+            }
+
+    def captured(self) -> tuple[bytes, bytes]:
+        with self.lock:
+            return bytes(self.stdout), bytes(self.stderr)
 
 
 _WINDOWS_ABSOLUTE = re.compile(r"^[A-Za-z]:[\\/]")
@@ -165,7 +267,171 @@ _MAX_CATEGORY_TEXT = 128
 _MAX_SEVERITY_TEXT = 32
 _MAX_SESSION_TEXT = 256
 _MAX_MESSAGE_TEXT = 2_000
+_MAX_WARNING_TYPE_TEXT = 128
+_MAX_WARNING_PATH_TEXT = 512
 _MAX_PROCESS_OUTPUT_BYTES = 8 * 1024 * 1024
+_MAX_STRUCTURED_EVENT_LINE_BYTES = 8 * 1024
+_MAX_STRUCTURED_EVENT_COUNT = 10_000
+_MAX_STRUCTURED_EVENT_DATA_FIELDS = 32
+_MAX_STRUCTURED_EVENT_QUEUE = 1_024
+_MAX_STRUCTURED_EVENT_TYPE_TEXT = 128
+_MAX_STRUCTURED_EVENT_LABEL_TEXT = 128
+_MAX_STRUCTURED_EVENT_PATH_TEXT = 512
+_MAX_STRUCTURED_EVENT_TIMESTAMP_TEXT = 64
+_MAX_EVENT_NUMBER = 2**63 - 1
+_OUTPUT_ACTIVITY_INTERVAL_SECONDS = 2.0
+_PROCESS_POLL_INTERVAL_SECONDS = 0.02
+_READER_DRAIN_TIMEOUT_SECONDS = 1.0
+_READER_JOIN_TIMEOUT_SECONDS = 0.5
+_MAX_STRUCTURED_EVENTS_PER_TICK = 64
+_EVENT_CALLBACK_ERROR = "OCR event callback failed"
+_SAFE_EVENT_LABEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@_+\-]{0,127}$")
+_SAFE_EVENT_TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$")
+
+_STRUCTURED_EVENT_METADATA: dict[str, tuple[str, str, str]] = {
+    "file.started": ("info", "file_started", "OCR reported a file start."),
+    "file.completed": ("info", "file_completed", "OCR reported a file completion."),
+    "file.failed": ("error", "file_failed", "OCR reported a file failure."),
+    "scan.inventory": ("info", "scan_inventory", "OCR reported scan inventory."),
+    "llm.request.started": ("info", "llm_request_started", "OCR reported an LLM request start."),
+    "llm.request.headers": ("info", "llm_request_headers", "OCR reported LLM request headers."),
+    "llm.request.completed": ("info", "llm_request_completed", "OCR reported an LLM request completion."),
+    "llm.request.failed": ("error", "llm_request_failed", "OCR reported an LLM request failure."),
+    "llm.request.retry": ("warning", "llm_request_retry", "OCR reported an LLM request retry."),
+    "tool.started": ("info", "tool_started", "OCR reported a tool start."),
+    "tool.completed": ("info", "tool_completed", "OCR reported a tool completion."),
+    "tool.failed": ("error", "tool_failed", "OCR reported a tool failure."),
+    "session.started": ("info", "session_started", "OCR reported a session start."),
+}
+_STRUCTURED_EVENT_DATA_FIELDS: dict[str, frozenset[str]] = {
+    "file.started": frozenset(
+        {
+            "index",
+            "ordinal",
+            "total",
+            "bytes",
+            "size",
+            "size_bytes",
+            "files_total",
+            "path",
+            "file_id",
+        }
+    ),
+    "file.completed": frozenset(
+        {
+            "index",
+            "ordinal",
+            "total",
+            "bytes",
+            "size",
+            "size_bytes",
+            "duration_ms",
+            "comments",
+            "tokens",
+            "reviewed_files",
+            "files_reviewed",
+            "path",
+            "file_id",
+        }
+    ),
+    "file.failed": frozenset(
+        {
+            "index",
+            "ordinal",
+            "total",
+            "duration_ms",
+            "exit_code",
+            "status_code",
+            "failed_files",
+            "path",
+            "file_id",
+        }
+    ),
+    "scan.inventory": frozenset(
+        {
+            "files",
+            "files_total",
+            "directories",
+            "bytes",
+            "size_bytes",
+            "candidates",
+            "unsupported",
+            "skipped",
+            "count",
+            "total_files",
+            "reviewed_files",
+            "files_reviewed",
+            "failed_files",
+            "files_failed",
+            "skipped_files",
+            "files_skipped",
+            "session_id",
+        }
+    ),
+    "llm.request.started": frozenset({"retry_count", "count", "request_id", "session_id", "provider", "model"}),
+    "llm.request.headers": frozenset(
+        {
+            "headers_count",
+            "count",
+            "bytes",
+            "http_status",
+            "status_code",
+            "request_id",
+            "session_id",
+            "provider",
+            "model",
+        }
+    ),
+    "llm.request.completed": frozenset(
+        {
+            "duration_ms",
+            "status_code",
+            "http_status",
+            "prompt_tokens",
+            "completion_tokens",
+            "input_tokens",
+            "output_tokens",
+            "total_tokens",
+            "bytes",
+            "request_id",
+            "session_id",
+            "provider",
+            "model",
+        }
+    ),
+    "llm.request.failed": frozenset(
+        {
+            "duration_ms",
+            "status_code",
+            "http_status",
+            "retry_count",
+            "bytes",
+            "request_id",
+            "session_id",
+            "provider",
+            "model",
+        }
+    ),
+    "llm.request.retry": frozenset(
+        {"retry_count", "duration_ms", "count", "request_id", "session_id", "provider", "model"}
+    ),
+    "tool.started": frozenset({"count", "tool", "tool_id", "request_id", "session_id"}),
+    "tool.completed": frozenset(
+        {"duration_ms", "status_code", "exit_code", "count", "tool", "tool_id", "request_id", "session_id"}
+    ),
+    "tool.failed": frozenset(
+        {"duration_ms", "status_code", "exit_code", "count", "tool", "tool_id", "request_id", "session_id"}
+    ),
+    "session.started": frozenset({"pid", "count", "session_id", "provider", "model"}),
+}
+_STRUCTURED_EVENT_TEXT_FIELDS: dict[str, frozenset[str]] = {
+    event_type: frozenset(
+        field_name
+        for field_name in fields
+        if field_name in {"path", "file_id", "request_id", "session_id", "provider", "model", "tool", "tool_id"}
+    )
+    for event_type, fields in _STRUCTURED_EVENT_DATA_FIELDS.items()
+}
 
 
 def _validate_optional_text(value: str | None, field_name: str) -> None:
@@ -285,7 +551,10 @@ def normalize_comment(value: object) -> OCRComment:
         severity = severity.lower()
     existing_code = _optional_string(value.get("existing_code"), "existing_code")
     suggestion_code = _optional_string(value.get("suggestion_code"), "suggestion_code")
-    thinking = _optional_string(value.get("thinking"), "thinking")
+    # Upstream can attach long reasoning transcripts to a valid finding.
+    # They are not part of the service finding contract and must never be
+    # retained or make otherwise valid findings fail normalization.
+    thinking = None
     return OCRComment(
         path=path,
         start_line=start_line,
@@ -297,6 +566,40 @@ def normalize_comment(value: object) -> OCRComment:
         suggestion_code=suggestion_code,
         thinking=thinking,
     )
+
+
+def _normalize_warning(value: object) -> str | dict[str, str]:
+    if isinstance(value, str):
+        warning_text = value.strip()
+        if len(warning_text) > _MAX_MESSAGE_TEXT:
+            raise OCRSchemaError(f"OCR warning exceeds the maximum length of {_MAX_MESSAGE_TEXT} characters")
+        return warning_text
+    if not isinstance(value, Mapping):
+        raise OCRSchemaError("OCR warnings must contain strings or warning objects")
+    if set(value) - {"type", "file", "message"}:
+        raise OCRSchemaError("OCR warning object contains unsupported fields")
+    warning_type = _optional_string(value.get("type"), "OCR warning type", max_length=_MAX_WARNING_TYPE_TEXT)
+    if warning_type is not None and any(character in warning_type for character in ("\x00", "\r", "\n")):
+        raise OCRSchemaError("OCR warning type contains control characters")
+    warning_file_value = value.get("file")
+    warning_file: str | None = None
+    if warning_file_value is not None and warning_file_value != "":
+        warning_file = _normalize_relative_path(warning_file_value, field_name="OCR warning file")
+        if len(warning_file) > _MAX_WARNING_PATH_TEXT:
+            raise OCRSchemaError(f"OCR warning file exceeds the maximum length of {_MAX_WARNING_PATH_TEXT} characters")
+    warning_message = _optional_string(value.get("message"), "OCR warning message", max_length=_MAX_MESSAGE_TEXT)
+    if warning_message is not None and any(character in warning_message for character in ("\x00", "\r", "\n")):
+        raise OCRSchemaError("OCR warning message contains control characters")
+    if warning_type is None and warning_file is None and warning_message is None:
+        raise OCRSchemaError("OCR warning object must contain type, file, or message")
+    normalized_warning: dict[str, str] = {}
+    if warning_type is not None:
+        normalized_warning["type"] = warning_type
+    if warning_file is not None:
+        normalized_warning["file"] = warning_file
+    if warning_message is not None:
+        normalized_warning["message"] = warning_message
+    return normalized_warning
 
 
 def parse_ocr_envelope(
@@ -327,7 +630,7 @@ def parse_ocr_envelope(
     elif status_value in _KNOWN_FAILED:
         status = OCRStatus.FAILED
     else:
-        raise OCRSchemaError(f"unsupported OCR status: {raw_status!r}")
+        raise OCRSchemaError("unsupported OCR status")
 
     if "comments" not in document:
         raise OCRSchemaError("OCR JSON output must contain a comments array")
@@ -343,14 +646,9 @@ def parse_ocr_envelope(
         raise OCRSchemaError("OCR warnings must be an array when present")
     if len(raw_warnings) > _MAX_WARNING_COUNT:
         raise OCRSchemaError(f"OCR warnings exceed the maximum count of {_MAX_WARNING_COUNT}")
-    warnings_list: list[str] = []
+    warnings_list: list[Any] = []
     for item in raw_warnings:
-        if not isinstance(item, str):
-            raise OCRSchemaError("OCR warnings must contain strings")
-        warning = item.strip()
-        if len(warning) > _MAX_MESSAGE_TEXT:
-            raise OCRSchemaError(f"OCR warning exceeds the maximum length of {_MAX_MESSAGE_TEXT} characters")
-        warnings_list.append(warning)
+        warnings_list.append(_normalize_warning(item))
     warnings = tuple(warnings_list)
     if status is OCRStatus.COMPLETE and warnings:
         status = OCRStatus.PARTIAL
@@ -374,6 +672,7 @@ class OpenCodeReviewRunner:
         executable: str | Path = "ocr",
         *,
         environment: Mapping[str, str] | None = None,
+        structured_event_protocol: bool = False,
     ) -> None:
         if isinstance(executable, Path):
             executable_value = str(executable)
@@ -383,8 +682,11 @@ class OpenCodeReviewRunner:
             raise ValueError("executable must be a non-empty path or command name")
         if "\x00" in executable_value:
             raise ValueError("executable must not contain NUL bytes")
+        if not isinstance(structured_event_protocol, bool):
+            raise ValueError("structured_event_protocol must be a boolean")
         self.executable = executable_value
         self.environment = dict(environment) if environment is not None else None
+        self.structured_event_protocol = structured_event_protocol
 
     def build_argv(self, config: OCRScanConfig | None = None) -> list[str]:
         """Build the exact argv passed to OCR, without invoking a shell."""
@@ -430,6 +732,7 @@ class OpenCodeReviewRunner:
         timeout: int | None = None,
         cancel_check: Callable[[], bool] | None = None,
         should_cancel: Callable[[], bool] | None = None,
+        event_callback: Callable[[dict[str, Any]], None] | None = None,
     ) -> OCRRunResult:
         """Run OCR and return process evidence plus normalized findings."""
 
@@ -476,7 +779,9 @@ class OpenCodeReviewRunner:
             )
         else:
             selected = config
-        process = self._invoke(checkout_path, selected, cancel_check=cancel_check)
+        event_sink = _EventSink(event_callback) if event_callback is not None else None
+        process = self._invoke(checkout_path, selected, cancel_check=cancel_check, event_callback=event_sink)
+        callback = event_sink
         if process.canceled:
             return OCRRunResult(
                 status=OCRStatus.FAILED,
@@ -519,6 +824,24 @@ class OpenCodeReviewRunner:
             | None
         ) = None
         parse_error: str | None = None
+        parse_error_code = "missing_json"
+        try:
+            _emit_event(
+                callback,
+                event_type="ocr.parse_started",
+                stage="parsing",
+                level="info",
+                code="parse_started",
+                message="Parsing OCR JSON output.",
+            )
+        except _EventCallbackFailure:
+            return OCRRunResult(
+                status=OCRStatus.FAILED,
+                stdout=process.stdout,
+                stderr=process.stderr,
+                exit_code=process.exit_code,
+                error=_EVENT_CALLBACK_ERROR,
+            )
         if process.stdout.strip():
             try:
                 decoded = json.loads(process.stdout)
@@ -526,12 +849,27 @@ class OpenCodeReviewRunner:
                     raise OCRSchemaError("OCR JSON output must be a top-level object")
                 envelope = decoded
                 parsed = parse_ocr_envelope(decoded)
-            except (json.JSONDecodeError, OCRSchemaError) as exc:
-                parse_error = f"invalid OCR JSON output: {exc}"
+            except json.JSONDecodeError:
+                parse_error = "invalid OCR JSON output"
+                parse_error_code = "invalid_json"
+            except OCRSchemaError as exc:
+                parse_error = "invalid OCR JSON schema"
+                parse_error_code = _schema_error_code(exc)
         else:
             parse_error = "OCR produced no JSON output"
 
         if parse_error is not None:
+            try:
+                _emit_event(
+                    callback,
+                    event_type="ocr.parse_error",
+                    stage="parsing",
+                    level="error",
+                    code=parse_error_code,
+                    message="OCR JSON output could not be parsed.",
+                )
+            except _EventCallbackFailure:
+                parse_error = _EVENT_CALLBACK_ERROR
             return OCRRunResult(
                 status=OCRStatus.FAILED,
                 stdout=process.stdout,
@@ -542,6 +880,25 @@ class OpenCodeReviewRunner:
             )
         assert parsed is not None
         status, comments, warnings, summary, session_id, message, llm = parsed
+        try:
+            _emit_event(
+                callback,
+                event_type="ocr.parse_finished",
+                stage="parsing",
+                level="info",
+                code="parse_finished",
+                message="OCR JSON output parsed.",
+                data={"comments": len(comments), "warnings": len(warnings)},
+            )
+        except _EventCallbackFailure:
+            return OCRRunResult(
+                status=OCRStatus.FAILED,
+                stdout=process.stdout,
+                stderr=process.stderr,
+                exit_code=process.exit_code,
+                error=_EVENT_CALLBACK_ERROR,
+                envelope=envelope,
+            )
         if status is OCRStatus.COMPLETE and warnings:
             status = OCRStatus.PARTIAL
         if process.exit_code not in (0, None):
@@ -575,117 +932,685 @@ class OpenCodeReviewRunner:
         config: OCRScanConfig,
         *,
         cancel_check: Callable[[], bool] | None = None,
+        event_callback: Callable[[dict[str, Any]], None] | None = None,
     ) -> _ProcessResult:
-        if cancel_check is not None:
-            return self._invoke_cancellable(checkout, config, cancel_check)
-        try:
-            completed = subprocess.run(
-                self.build_argv(config),
-                cwd=str(checkout),
-                shell=False,
-                capture_output=True,
-                text=True,
-                timeout=config.process_timeout_seconds,
-                check=False,
-                env=self.environment,
-            )
-        except subprocess.TimeoutExpired as exc:
-            return _limit_process_result(
-                _ProcessResult(
-                    stdout=_as_text(exc.stdout),
-                    stderr=_as_text(exc.stderr),
-                    exit_code=None,
-                    timed_out=True,
-                    error="OpenCodeReview subprocess timed out",
-                )
-            )
-        except OSError as exc:
-            return _ProcessResult(
-                stdout="",
-                stderr="",
-                exit_code=None,
-                timed_out=False,
-                canceled=False,
-                error=f"could not start OpenCodeReview: {exc}",
-            )
-        return _limit_process_result(
-            _ProcessResult(
-                stdout=_as_text(completed.stdout),
-                stderr=_as_text(completed.stderr),
-                exit_code=completed.returncode,
-                timed_out=False,
-            )
-        )
+        """Run OCR with bounded concurrent readers on every invocation path."""
 
-    def _invoke_cancellable(
-        self,
-        checkout: Path,
-        config: OCRScanConfig,
-        cancel_check: Callable[[], bool],
-    ) -> _ProcessResult:
-        process: subprocess.Popen[str] | None = None
+        process: subprocess.Popen[bytes] | None = None
+        event_read_stream: Any = None
+        event_read_fd: int | None = None
+        event_write_fd: int | None = None
+        readers: list[threading.Thread] = []
+        event_queue: queue.Queue[dict[str, Any]] | None = None
+        capture = _ProcessCapture(_MAX_PROCESS_OUTPUT_BYTES)
+        outcome = _InvocationOutcome()
+        cleanup_force = False
+        callback_failed = False
+
         try:
-            process = subprocess.Popen(
-                self.build_argv(config),
-                cwd=str(checkout),
-                env=self.environment,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                start_new_session=True,
-            )
-            deadline = (
+            if self.structured_event_protocol:
+                event_read_fd, event_write_fd = os.pipe()
+                event_read_stream = os.fdopen(event_read_fd, "rb", buffering=0)
+                event_read_fd = None
+
+            popen_kwargs: dict[str, Any] = {
+                "cwd": str(checkout),
+                "env": _child_environment(self.environment, event_write_fd),
+                "stdin": subprocess.DEVNULL,
+                "stdout": subprocess.PIPE,
+                "stderr": subprocess.PIPE,
+                "shell": False,
+                "text": False,
+                "bufsize": 0,
+                "start_new_session": True,
+            }
+            if event_write_fd is not None:
+                # ``pass_fds`` is deliberately added only for the explicit
+                # structured protocol opt-in.  The ordinary OCR process gets
+                # no inherited diagnostics channel.
+                popen_kwargs["pass_fds"] = (event_write_fd,)
+            process = subprocess.Popen(self.build_argv(config), **popen_kwargs)
+            process_deadline = (
                 time.monotonic() + config.process_timeout_seconds
                 if config.process_timeout_seconds is not None
                 else None
             )
-            while process.poll() is None:
-                if cancel_check():
-                    _terminate_process(process)
-                    stdout, stderr = process.communicate()
-                    return _limit_process_result(
-                        _ProcessResult(
-                            stdout=_as_text(stdout),
-                            stderr=_as_text(stderr),
-                            exit_code=process.returncode,
-                            timed_out=False,
-                            canceled=True,
-                            error="OpenCodeReview canceled",
-                        )
-                    )
-                if deadline is not None and time.monotonic() >= deadline:
-                    _terminate_process(process)
-                    stdout, stderr = process.communicate()
-                    return _limit_process_result(
-                        _ProcessResult(
-                            stdout=_as_text(stdout),
-                            stderr=_as_text(stderr),
-                            exit_code=process.returncode,
-                            timed_out=True,
-                            error="OpenCodeReview subprocess timed out",
-                        )
-                    )
-                time.sleep(0.1)
-            stdout, stderr = process.communicate()
-            return _limit_process_result(
-                _ProcessResult(
-                    stdout=_as_text(stdout),
-                    stderr=_as_text(stderr),
-                    exit_code=process.returncode,
-                    timed_out=False,
+            if event_write_fd is not None:
+                os.close(event_write_fd)
+                event_write_fd = None
+
+            if event_callback is not None:
+                event_queue = queue.Queue(maxsize=_MAX_STRUCTURED_EVENT_QUEUE)
+            readers.append(
+                threading.Thread(
+                    target=_read_bounded_stream, args=(getattr(process, "stdout", None), "stdout", capture)
                 )
             )
-        except OSError as exc:
-            if process is not None and process.poll() is None:
-                _terminate_process(process)
-                process.communicate()
+            readers.append(
+                threading.Thread(
+                    target=_read_bounded_stream, args=(getattr(process, "stderr", None), "stderr", capture)
+                )
+            )
+            if event_read_stream is not None:
+                readers.append(
+                    threading.Thread(
+                        target=_read_structured_events,
+                        args=(event_read_stream, capture, event_queue),
+                    )
+                )
+            for reader in readers:
+                reader.daemon = True
+                reader.start()
+
+            _emit_event(
+                event_callback,
+                event_type="ocr.started",
+                stage="ocr_starting",
+                level="info",
+                code="process_started",
+                message="OpenCodeReview process started.",
+                data=_numeric_data("pid", _process_pid(process)),
+            )
+
+            outcome = _monitor_process(
+                process,
+                config,
+                capture,
+                readers,
+                event_queue,
+                event_callback,
+                cancel_check,
+                process_deadline,
+            )
+            cleanup_force = outcome.force_kill or _event_sink_failed(event_callback)
+        except _EventCallbackFailure:
+            callback_failed = True
+            cleanup_force = True
+            outcome = _InvocationOutcome(force_kill=True, error=_EVENT_CALLBACK_ERROR)
+        except (OSError, TypeError, ValueError):
+            cleanup_force = process is not None
+            outcome = _InvocationOutcome(
+                force_kill=cleanup_force,
+                error="could not start OpenCodeReview" if process is None else "could not monitor OpenCodeReview",
+            )
+        except BaseException:
+            cleanup_force = True
+            raise
+        finally:
+            if event_read_fd is not None:
+                _close_quietly(event_read_fd)
+            if event_write_fd is not None:
+                _close_quietly(event_write_fd)
+            if process is not None:
+                orphaned = _cleanup_process(process, readers, event_read_stream, cleanup_force)
+            else:
+                orphaned = False
+            if event_read_stream is not None and not readers:
+                _close_quietly(event_read_stream)
+
+        if process is None:
             return _ProcessResult(
                 stdout="",
                 stderr="",
                 exit_code=None,
                 timed_out=False,
-                error=f"could not start OpenCodeReview: {exc}",
+                error=outcome.error or "could not start OpenCodeReview",
             )
+
+        stdout_bytes, stderr_bytes = capture.captured()
+        exit_code = _process_returncode(process)
+        if orphaned and outcome.error is None:
+            outcome.error = "OpenCodeReview output readers did not terminate"
+        result = _ProcessResult(
+            stdout=_as_text(stdout_bytes),
+            stderr=_as_text(stderr_bytes),
+            exit_code=exit_code,
+            timed_out=outcome.timed_out,
+            canceled=outcome.canceled,
+            output_limited=outcome.output_limited,
+            error=outcome.error,
+        )
+        if callback_failed:
+            return result
+
+        try:
+            terminal_data = capture.counters()
+            if exit_code is not None:
+                terminal_data["exit_code"] = exit_code
+            if outcome.timed_out:
+                _emit_event(
+                    event_callback,
+                    event_type="ocr.timeout",
+                    stage="ocr_running",
+                    level="error",
+                    code="process_timeout",
+                    message="OpenCodeReview process timed out.",
+                    data=terminal_data,
+                )
+            elif outcome.canceled:
+                _emit_event(
+                    event_callback,
+                    event_type="ocr.canceled",
+                    stage="ocr_running",
+                    level="warning",
+                    code="process_canceled",
+                    message="OpenCodeReview process was canceled.",
+                    data=terminal_data,
+                )
+            elif outcome.output_limited:
+                _emit_event(
+                    event_callback,
+                    event_type="ocr.output_limit",
+                    stage="ocr_running",
+                    level="error",
+                    code="process_output_limit",
+                    message="OpenCodeReview process output exceeded its limit.",
+                    data=terminal_data,
+                )
+            _emit_event(
+                event_callback,
+                event_type="ocr.exited",
+                stage="ocr_running",
+                level="info" if exit_code == 0 else "error",
+                code="process_exited",
+                message="OpenCodeReview process exited.",
+                data=terminal_data,
+            )
+        except _EventCallbackFailure:
+            return _ProcessResult(
+                stdout=result.stdout,
+                stderr=result.stderr,
+                exit_code=result.exit_code,
+                timed_out=result.timed_out,
+                canceled=result.canceled,
+                output_limited=result.output_limited,
+                error=_EVENT_CALLBACK_ERROR,
+            )
+        if _event_sink_failed(event_callback):
+            try:
+                _terminate_process(process)
+            except (AttributeError, OSError, ProcessLookupError):
+                pass
+        return result
+
+
+class _EventSink:
+    """Best-effort callback boundary that disables a failing consumer."""
+
+    def __init__(self, callback: Callable[[dict[str, Any]], None]) -> None:
+        self.callback = callback
+        self.failed = False
+
+    def __call__(self, event: dict[str, Any]) -> None:
+        if self.failed:
+            return
+        try:
+            self.callback(event)
+        except BaseException:
+            # Telemetry consumers must not be able to poison the authoritative
+            # OCR result.  The process monitor still drains and cleans up the
+            # child; the consumer is simply disabled for the rest of the run.
+            self.failed = True
+
+
+class _EventCallbackFailure(Exception):
+    """Internal marker used after an event callback has raised."""
+
+
+def _event_sink_failed(event_callback: Callable[[dict[str, Any]], None] | None) -> bool:
+    return isinstance(event_callback, _EventSink) and event_callback.failed
+
+
+def _call_event_callback(
+    event_callback: Callable[[dict[str, Any]], None] | None,
+    event: dict[str, Any],
+) -> None:
+    if event_callback is None:
+        return
+    try:
+        event_callback(event)
+    except BaseException:
+        # Do not carry callback exception text into the process result or any
+        # emitted event.  The caller receives a safe, stable failure instead.
+        raise _EventCallbackFailure from None
+
+
+def _emit_event(
+    event_callback: Callable[[dict[str, Any]], None] | None,
+    *,
+    event_type: str,
+    stage: str,
+    level: str,
+    code: str,
+    message: str,
+    data: Mapping[str, int] | None = None,
+) -> None:
+    """Emit the fixed, source-free event envelope used by the service."""
+
+    if event_callback is None:
+        return
+    _call_event_callback(
+        event_callback,
+        {
+            "source": "ocr",
+            "type": event_type,
+            "stage": stage,
+            "level": level,
+            "code": code,
+            "message": message,
+            "data": dict(data or {}),
+        },
+    )
+
+
+def _numeric_data(name: str, value: int | None) -> dict[str, int]:
+    if value is None or isinstance(value, bool) or not isinstance(value, int):
+        return {}
+    return {name: value}
+
+
+def _process_pid(process: subprocess.Popen[Any]) -> int | None:
+    value = getattr(process, "pid", None)
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        return None
+    return value
+
+
+def _process_returncode(process: subprocess.Popen[Any]) -> int | None:
+    value = getattr(process, "returncode", None)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value
+
+
+def _child_environment(
+    environment: Mapping[str, str] | None,
+    event_write_fd: int | None,
+) -> dict[str, str]:
+    child_environment = dict(os.environ if environment is None else environment)
+    # Never let a caller-provided stale descriptor value cause accidental
+    # inheritance.  The protocol is enabled only by this invocation's pipe.
+    child_environment.pop("ARGUS_OCR_EVENTS_FD", None)
+    if event_write_fd is not None:
+        child_environment["ARGUS_OCR_EVENTS_FD"] = str(event_write_fd)
+    return child_environment
+
+
+def _read_bounded_stream(stream: Any, stream_name: str, capture: _ProcessCapture) -> None:
+    """Drain one child stream concurrently while retaining only its prefix."""
+
+    try:
+        if stream is None:
+            return
+        while True:
+            read1 = getattr(stream, "read1", None)
+            chunk = read1(64 * 1024) if callable(read1) else stream.read(64 * 1024)
+            if not chunk:
+                return
+            if isinstance(chunk, str):
+                chunk = chunk.encode("utf-8", errors="replace")
+            elif isinstance(chunk, (bytearray, memoryview)):
+                chunk = bytes(chunk)
+            if not isinstance(chunk, bytes):
+                capture.mark_stream_reader_error()
+                return
+            capture.append_stream(stream_name, chunk)
+    except BaseException:
+        capture.mark_stream_reader_error()
+
+
+def _safe_event_number(key: object, value: object) -> int | None:
+    if not isinstance(key, str):
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or abs(value) > _MAX_EVENT_NUMBER:
+        return None
+    if key != "exit_code" and value < 0:
+        return None
+    return value
+
+
+def _safe_event_text(key: str, value: object) -> str | None:
+    if not isinstance(value, str) or not value or "\x00" in value:
+        return None
+    if key == "path":
+        if len(value) > _MAX_STRUCTURED_EVENT_PATH_TEXT:
+            return None
+        try:
+            return _normalize_relative_path(value, field_name="event path")
+        except OCRSchemaError:
+            return None
+    if len(value) > _MAX_STRUCTURED_EVENT_LABEL_TEXT or not _SAFE_EVENT_LABEL.fullmatch(value):
+        return None
+    return value
+
+
+def _normalize_structured_event(line: bytes) -> dict[str, Any] | None:
+    """Turn one v1 NDJSON line into a safe event, or reject it silently."""
+
+    if len(line) > _MAX_STRUCTURED_EVENT_LINE_BYTES:
+        return None
+    try:
+        document = json.loads(line)
+    except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+        return None
+    if not isinstance(document, Mapping):
+        return None
+    if set(document) - {"version", "type", "timestamp", "data"}:
+        return None
+    version = document.get("version")
+    if "version" not in document or isinstance(version, bool) or version != 1:
+        return None
+    timestamp = document.get("timestamp")
+    if timestamp is not None and (
+        not isinstance(timestamp, str)
+        or len(timestamp) > _MAX_STRUCTURED_EVENT_TIMESTAMP_TEXT
+        or not _SAFE_EVENT_TIMESTAMP.fullmatch(timestamp)
+    ):
+        return None
+    event_type = document.get("type")
+    if not isinstance(event_type, str) or len(event_type) > _MAX_STRUCTURED_EVENT_TYPE_TEXT:
+        return None
+    metadata = _STRUCTURED_EVENT_METADATA.get(event_type)
+    allowed_fields = _STRUCTURED_EVENT_DATA_FIELDS.get(event_type)
+    if metadata is None or allowed_fields is None:
+        return None
+    if "data" not in document:
+        return None
+    raw_data = document["data"]
+    if not isinstance(raw_data, Mapping) or len(raw_data) > _MAX_STRUCTURED_EVENT_DATA_FIELDS:
+        return None
+
+    safe_data: dict[str, int | str] = {}
+    for key, value in raw_data.items():
+        if key not in allowed_fields:
+            continue
+        safe_value = _safe_event_number(key, value)
+        if safe_value is not None:
+            safe_data[key] = safe_value
+            continue
+        if key not in _STRUCTURED_EVENT_TEXT_FIELDS[event_type]:
+            continue
+        safe_text = _safe_event_text(key, value)
+        if safe_text is not None:
+            safe_data[key] = safe_text
+    level, code, message = metadata
+    return {
+        "source": "ocr",
+        "type": event_type,
+        "stage": "ocr_running",
+        "level": level,
+        "code": code,
+        "message": message,
+        "data": safe_data,
+    }
+
+
+def _consume_structured_line(
+    line: bytes,
+    capture: _ProcessCapture,
+    event_queue: queue.Queue[dict[str, Any]] | None,
+) -> None:
+    with capture.lock:
+        if capture.structured_events_seen >= _MAX_STRUCTURED_EVENT_COUNT:
+            capture.structured_events_dropped += 1
+            return
+    event = _normalize_structured_event(line)
+    if event is None:
+        capture.record_structured_event(forwarded=False)
+        return
+    if event_queue is None:
+        capture.record_structured_event(forwarded=True)
+        return
+    try:
+        event_queue.put_nowait(event)
+    except queue.Full:
+        capture.record_structured_event(forwarded=False)
+        capture.drop_structured_event()
+        return
+    capture.record_structured_event(forwarded=True)
+
+
+def _read_structured_events(
+    stream: Any,
+    capture: _ProcessCapture,
+    event_queue: queue.Queue[dict[str, Any]] | None,
+) -> None:
+    """Drain the optional event fd without retaining unbounded lines."""
+
+    pending = bytearray()
+    oversized_line = False
+    try:
+        if stream is None:
+            return
+        while True:
+            read1 = getattr(stream, "read1", None)
+            chunk = read1(64 * 1024) if callable(read1) else stream.read(64 * 1024)
+            if not chunk:
+                break
+            if isinstance(chunk, str):
+                chunk = chunk.encode("utf-8", errors="replace")
+            elif isinstance(chunk, (bytearray, memoryview)):
+                chunk = bytes(chunk)
+            if not isinstance(chunk, bytes):
+                capture.mark_event_reader_error()
+                return
+            capture.append_event_bytes(len(chunk))
+            pieces = chunk.split(b"\n")
+            for index, piece in enumerate(pieces):
+                complete = index < len(pieces) - 1
+                if oversized_line:
+                    if complete:
+                        oversized_line = False
+                    continue
+                if len(pending) + len(piece) > _MAX_STRUCTURED_EVENT_LINE_BYTES:
+                    pending.clear()
+                    capture.reject_structured_event()
+                    capture.drop_structured_event()
+                    oversized_line = not complete
+                    continue
+                pending.extend(piece)
+                if complete:
+                    _consume_structured_line(bytes(pending).rstrip(b"\r"), capture, event_queue)
+                    pending.clear()
+        if pending and not oversized_line:
+            _consume_structured_line(bytes(pending).rstrip(b"\r"), capture, event_queue)
+    except BaseException:
+        capture.mark_event_reader_error()
+
+
+def _dispatch_structured_events(
+    event_queue: queue.Queue[dict[str, Any]] | None,
+    event_callback: Callable[[dict[str, Any]], None] | None,
+    limit: int = _MAX_STRUCTURED_EVENTS_PER_TICK,
+) -> None:
+    if event_queue is None or event_callback is None:
+        return
+    dispatched = 0
+    while dispatched < limit:
+        try:
+            event = event_queue.get_nowait()
+        except queue.Empty:
+            return
+        _call_event_callback(event_callback, event)
+        dispatched += 1
+
+
+def _monitor_process(
+    process: subprocess.Popen[bytes],
+    config: OCRScanConfig,
+    capture: _ProcessCapture,
+    readers: Sequence[threading.Thread],
+    event_queue: queue.Queue[dict[str, Any]] | None,
+    event_callback: Callable[[dict[str, Any]], None] | None,
+    cancel_check: Callable[[], bool] | None,
+    deadline: float | None,
+) -> _InvocationOutcome:
+    exited_at: float | None = None
+    last_activity_total = 0
+    last_activity_at: float | None = None
+
+    while True:
+        _dispatch_structured_events(event_queue, event_callback)
+        output_limited, reader_error = capture.flags()
+        if output_limited:
+            return _InvocationOutcome(
+                output_limited=True,
+                force_kill=True,
+                error="OpenCodeReview process output exceeded the configured limit",
+            )
+        if reader_error:
+            return _InvocationOutcome(force_kill=True, error="could not read OpenCodeReview process output")
+
+        now = time.monotonic()
+        returncode = process.poll()
+        finished = False
+        if returncode is None:
+            if cancel_check is not None:
+                try:
+                    if cancel_check():
+                        return _InvocationOutcome(
+                            canceled=True,
+                            force_kill=True,
+                            error="OpenCodeReview canceled",
+                        )
+                except BaseException:
+                    return _InvocationOutcome(force_kill=True, error="OCR cancellation callback failed")
+            if deadline is not None and now >= deadline:
+                return _InvocationOutcome(
+                    timed_out=True,
+                    force_kill=True,
+                    error="OpenCodeReview subprocess timed out",
+                )
+        else:
+            if exited_at is None:
+                exited_at = now
+            if not any(reader.is_alive() for reader in readers):
+                _dispatch_structured_events(event_queue, event_callback, limit=_MAX_STRUCTURED_EVENT_QUEUE)
+                finished = True
+            if now - exited_at >= _READER_DRAIN_TIMEOUT_SECONDS:
+                return _InvocationOutcome(
+                    force_kill=True,
+                    error="OpenCodeReview output readers did not terminate",
+                )
+
+        counters = capture.counters()
+        activity_total = sum(counters.values())
+        if activity_total > last_activity_total and (
+            last_activity_at is None or now - last_activity_at >= _OUTPUT_ACTIVITY_INTERVAL_SECONDS
+        ):
+            _emit_event(
+                event_callback,
+                event_type="ocr.output_activity",
+                stage="ocr_running",
+                level="info",
+                code="output_activity",
+                message="OpenCodeReview produced output activity.",
+                data=counters,
+            )
+            last_activity_total = activity_total
+            last_activity_at = now
+        if finished:
+            break
+        time.sleep(_PROCESS_POLL_INTERVAL_SECONDS)
+
+    return _InvocationOutcome()
+
+
+def _reap_process(process: subprocess.Popen[Any]) -> None:
+    wait = getattr(process, "wait", None)
+    if callable(wait):
+        try:
+            wait()
+        except (ChildProcessError, OSError):
+            return
+        return
+    communicate = getattr(process, "communicate", None)
+    if callable(communicate):
+        try:
+            communicate()
+        except (ChildProcessError, OSError):
+            return
+
+
+def _close_quietly(value: Any) -> None:
+    try:
+        if isinstance(value, int):
+            os.close(value)
+        else:
+            value.close()
+    except (AttributeError, OSError, ValueError):
+        return
+
+
+def _close_process_streams(process: subprocess.Popen[Any], event_read_stream: Any) -> None:
+    _close_quietly(getattr(process, "stdout", None))
+    _close_quietly(getattr(process, "stderr", None))
+    if event_read_stream is not None:
+        _close_quietly(event_read_stream)
+
+
+def _join_readers(readers: Sequence[threading.Thread], timeout: float) -> bool:
+    deadline = time.monotonic() + timeout
+    for reader in readers:
+        remaining = max(deadline - time.monotonic(), 0.0)
+        reader.join(remaining)
+    return any(reader.is_alive() for reader in readers)
+
+
+def _cleanup_process(
+    process: subprocess.Popen[Any],
+    readers: Sequence[threading.Thread],
+    event_read_stream: Any,
+    force_kill: bool,
+) -> bool:
+    """Kill/reap the group when needed and always close/join process resources."""
+
+    attempted_kill = False
+    try:
+        if force_kill or process.poll() is None:
+            _terminate_process(process)
+            attempted_kill = True
+    except (OSError, ProcessLookupError, AttributeError):
+        attempted_kill = True
+
+    _reap_process(process)
+    if attempted_kill:
+        _close_process_streams(process, event_read_stream)
+
+    readers_alive = _join_readers(readers, _READER_JOIN_TIMEOUT_SECONDS)
+    if readers_alive:
+        # A child helper can keep an inherited pipe open after the group leader
+        # exits.  Kill the session group and close parent read ends before the
+        # final join so no descendant or reader survives the boundary.
+        try:
+            _terminate_process(process)
+        except (OSError, ProcessLookupError, AttributeError):
+            pass
+        _reap_process(process)
+        _close_process_streams(process, event_read_stream)
+        readers_alive = _join_readers(readers, _READER_JOIN_TIMEOUT_SECONDS)
+    else:
+        _close_process_streams(process, event_read_stream)
+    return readers_alive
+
+
+def _schema_error_code(error: OCRSchemaError) -> str:
+    """Classify a parser failure without echoing upstream field values."""
+    message = str(error)
+    for field_name in ("category", "severity", "existing_code", "suggestion_code", "session_id", "message"):
+        if message.startswith(field_name + " exceeds the maximum length"):
+            return f"invalid_schema_{field_name}_too_long"
+    if message.startswith("comment content exceeds"):
+        return "invalid_schema_content_too_long"
+    if message.startswith("path "):
+        return "invalid_schema_path"
+    if message.startswith(("start_line ", "end_line ")):
+        return "invalid_schema_location"
+    if message.startswith(("OCR warnings ", "OCR warning ")):
+        return "invalid_schema_warnings"
+    return "invalid_schema"
 
 
 def _as_text(value: str | bytes | None) -> str:
@@ -707,6 +1632,7 @@ def _limit_process_result(result: _ProcessResult) -> _ProcessResult:
         exit_code=result.exit_code,
         timed_out=result.timed_out,
         canceled=result.canceled,
+        output_limited=True,
         error="OpenCodeReview process output exceeded the configured limit",
     )
 
@@ -718,7 +1644,7 @@ def _limit_text(value: str, limit: int) -> tuple[str, bool]:
     return encoded[:limit].decode("utf-8", errors="ignore"), True
 
 
-def _terminate_process(process: subprocess.Popen[str]) -> None:
+def _terminate_process(process: subprocess.Popen[Any]) -> None:
     """Terminate the OCR process group so child helpers do not outlive a scan."""
 
     pid = getattr(process, "pid", None)

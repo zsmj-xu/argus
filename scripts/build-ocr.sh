@@ -1,9 +1,9 @@
 #!/bin/sh
 set -eu
 
-: "${OCR_SOURCE_URL:=https://github.com/alibaba/open-code-review.git}"
-: "${OCR_VERSION:=main}"
-: "${OCR_COMMIT:=1f5caf4d5b7d5324c6e4c836c971136e4010192e}"
+: "${OCR_SOURCE_URL:=https://github.com/zsmj-xu/open-code-review.git}"
+: "${OCR_VERSION:=codex/argus-aligned-refactor}"
+: "${OCR_COMMIT:=072808b6b0b12a1408b31889539c03878eff0f61}"
 : "${OCR_OUTPUT:=/out/ocr}"
 
 work_dir="$(mktemp -d)"

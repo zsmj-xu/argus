@@ -120,6 +120,98 @@ class ScanProgress(ServiceModel):
     percent: int = Field(default=0, ge=0, le=100)
 
 
+class ScanCapabilities(ServiceModel):
+    """Capabilities that have been positively observed for one scan."""
+
+    file_progress: bool = False
+    llm_requests: bool = False
+    event_protocol: bool = False
+
+
+class ScanCoverage(ServiceModel):
+    """Truthful coverage counters; ``total`` is null when it is not known."""
+
+    total: int | None = Field(default=None, ge=0)
+    reviewed: int = Field(default=0, ge=0)
+    failed: int = Field(default=0, ge=0)
+    skipped: int = Field(default=0, ge=0)
+    percent: int | None = Field(default=None, ge=0, le=100)
+
+
+class ScanErrorSummary(ServiceModel):
+    """A bounded, actionable summary of the most recent scan error."""
+
+    code: str | None = Field(default=None, max_length=256)
+    message: str | None = Field(default=None, max_length=2_000)
+    retryable: bool | None = None
+    suggestion: str | None = Field(default=None, max_length=2_000)
+    source: str | None = Field(default=None, max_length=128)
+
+
+class ScanObservation(ServiceModel):
+    """Derived runtime observability returned with every scan response."""
+
+    stage: str = Field(default="unknown", max_length=256)
+    stage_started_at: datetime | None = None
+    elapsed_seconds: float = Field(default=0, ge=0)
+    stage_elapsed_seconds: float = Field(default=0, ge=0)
+    last_output_at: datetime | None = None
+    last_progress_at: datetime | None = None
+    worker_heartbeat_at: datetime | None = None
+    deadline_at: datetime | None = None
+    activity_state: str = Field(default="unknown", max_length=64)
+    capabilities: ScanCapabilities = Field(default_factory=ScanCapabilities)
+    coverage: ScanCoverage = Field(default_factory=ScanCoverage)
+    report_ready: bool = False
+    history_available: bool = False
+    error_summary: ScanErrorSummary = Field(default_factory=ScanErrorSummary)
+    warnings: list[str] = Field(default_factory=list, max_length=16)
+    event_count: int = Field(default=0, ge=0)
+    dropped_event_count: int = Field(default=0, ge=0)
+    truncated_event_count: int = Field(default=0, ge=0)
+
+
+class ScanEvent(ServiceModel):
+    """One immutable sanitized event in the scan history."""
+
+    schema_version: int = Field(default=1, ge=1)
+    event_id: int | None = Field(default=None, ge=1)
+    timestamp: datetime
+    id: int | None = Field(default=None, ge=1)
+    cursor: int | None = Field(default=None, ge=1)
+    scan_id: str
+    attempt: int = Field(ge=0)
+    source: str | None = Field(default=None, max_length=128)
+    type: str = Field(min_length=1, max_length=128)
+    stage: str | None = Field(default=None, max_length=256)
+    level: str | None = Field(default=None, max_length=32)
+    code: str | None = Field(default=None, max_length=256)
+    message: str | None = Field(default=None, max_length=2_000)
+    data: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+    truncated: bool = False
+    accepted: bool = True
+    dropped: bool = False
+
+
+class ScanEventsResponse(ServiceModel):
+    items: list[ScanEvent]
+    next_cursor: int = Field(ge=0)
+    has_more: bool = False
+    oldest_cursor: int | None = None
+    history_truncated: bool = False
+    expired_event_count: int = Field(default=0, ge=0)
+
+
+class ScanDiagnosticsResponse(ServiceModel):
+    scan_id: str
+    observation: ScanObservation
+    summary: dict[str, Any] = Field(default_factory=dict)
+    recent_errors: list[ScanEvent] = Field(default_factory=list)
+    evidence: list[dict[str, Any]] = Field(default_factory=list)
+    suggestions: list[str] = Field(default_factory=list)
+
+
 class FindingCreate(ServiceModel):
     """A normalized static finding produced by the OCR adapter."""
 
@@ -179,6 +271,7 @@ class ScanResponse(ServiceModel):
     updated_at: datetime
     started_at: datetime | None = None
     finished_at: datetime | None = None
+    observation: ScanObservation = Field(default_factory=ScanObservation)
 
 
 class ScanListResponse(ServiceModel):

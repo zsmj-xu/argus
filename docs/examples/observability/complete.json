@@ -1,0 +1,70 @@
+{
+  "attempt": 1,
+  "background": null,
+  "commit_sha": "0123456789abcdef0123456789abcdef01234567",
+  "created_at": "2026-09-15T11:11:35Z",
+  "error": null,
+  "exclude": [],
+  "finding_count": 0,
+  "finished_at": "2026-09-15T11:11:35Z",
+  "id": "92fe166a5e504ddb8c63bb1ff69d18af",
+  "idempotency_key": "complete-fixture",
+  "include": [],
+  "metadata": {
+    "ocr_status": "complete",
+    "ocr_summary": {
+      "comments": 0,
+      "files_reviewed": 2
+    }
+  },
+  "observation": {
+    "activity_state": "completed",
+    "capabilities": {
+      "event_protocol": false,
+      "file_progress": false,
+      "llm_requests": false
+    },
+    "coverage": {
+      "failed": 0,
+      "percent": 100,
+      "reviewed": 2,
+      "skipped": 0,
+      "total": 2
+    },
+    "deadline_at": null,
+    "dropped_event_count": 0,
+    "elapsed_seconds": 0.0,
+    "error_summary": {
+      "code": null,
+      "message": null,
+      "retryable": null,
+      "source": null,
+      "suggestion": null
+    },
+    "event_count": 3,
+    "history_available": true,
+    "last_output_at": null,
+    "last_progress_at": "2026-09-15T11:11:35Z",
+    "report_ready": true,
+    "stage": "completed",
+    "stage_elapsed_seconds": 0.0,
+    "stage_started_at": "2026-09-15T11:11:35Z",
+    "truncated_event_count": 0,
+    "warnings": [],
+    "worker_heartbeat_at": "2026-09-15T11:11:35Z"
+  },
+  "phase": "completed",
+  "progress": {
+    "failed_files": 0,
+    "percent": 100,
+    "reviewed_files": 2,
+    "skipped_files": 0,
+    "total_files": 2
+  },
+  "ref": "main",
+  "repository_url": "https://example.invalid/project.git",
+  "session_id": null,
+  "started_at": "2026-09-15T11:11:35Z",
+  "status": "completed",
+  "updated_at": "2026-09-15T11:11:35Z"
+}

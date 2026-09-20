@@ -1,0 +1,64 @@
+{
+  "attempt": 1,
+  "background": null,
+  "commit_sha": null,
+  "created_at": "2026-09-15T11:11:35Z",
+  "error": null,
+  "exclude": [],
+  "finding_count": 0,
+  "finished_at": null,
+  "id": "67a021e2881b4ec2a5269a13edbe68dc",
+  "idempotency_key": "running-fixture",
+  "include": [],
+  "metadata": {},
+  "observation": {
+    "activity_state": "starting",
+    "capabilities": {
+      "event_protocol": false,
+      "file_progress": false,
+      "llm_requests": false
+    },
+    "coverage": {
+      "failed": 0,
+      "percent": null,
+      "reviewed": 0,
+      "skipped": 0,
+      "total": null
+    },
+    "deadline_at": null,
+    "dropped_event_count": 0,
+    "elapsed_seconds": 0.399,
+    "error_summary": {
+      "code": null,
+      "message": null,
+      "retryable": null,
+      "source": null,
+      "suggestion": null
+    },
+    "event_count": 3,
+    "history_available": true,
+    "last_output_at": null,
+    "last_progress_at": null,
+    "report_ready": false,
+    "stage": "ocr_running",
+    "stage_elapsed_seconds": 0.399,
+    "stage_started_at": "2026-09-15T11:11:35Z",
+    "truncated_event_count": 0,
+    "warnings": [],
+    "worker_heartbeat_at": "2026-09-15T11:11:35Z"
+  },
+  "phase": "ocr_running",
+  "progress": {
+    "failed_files": 0,
+    "percent": 0,
+    "reviewed_files": 0,
+    "skipped_files": 0,
+    "total_files": 0
+  },
+  "ref": "main",
+  "repository_url": "https://example.invalid/project.git",
+  "session_id": null,
+  "started_at": "2026-09-15T11:11:35Z",
+  "status": "running",
+  "updated_at": "2026-09-15T11:11:35Z"
+}

@@ -1,0 +1,1572 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Argus White-box Scan Service",
+    "description": "Internal API for bounded OpenCodeReview full-file scans.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/v1/scans": {
+      "post": {
+        "summary": "Create Scan",
+        "operationId": "create_scan_v1_scans_post",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "List Scans",
+        "operationId": "list_scans_v1_scans_get",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/scans/{scan_id}": {
+      "get": {
+        "summary": "Get Scan",
+        "operationId": "get_scan_v1_scans__scan_id__get",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "scan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/scans/{scan_id}/events": {
+      "get": {
+        "summary": "Get Events",
+        "operationId": "get_events_v1_scans__scan_id__events_get",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "scan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scan Id"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "title": "After"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 100,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanEventsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/scans/{scan_id}/diagnostics": {
+      "get": {
+        "summary": "Get Diagnostics",
+        "operationId": "get_diagnostics_v1_scans__scan_id__diagnostics_get",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "scan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanDiagnosticsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/scans/{scan_id}/export": {
+      "get": {
+        "summary": "Export Diagnostics",
+        "operationId": "export_diagnostics_v1_scans__scan_id__export_get",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "scan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/scans/{scan_id}/diagnostics/export": {
+      "get": {
+        "summary": "Export Diagnostics",
+        "operationId": "export_diagnostics_v1_scans__scan_id__diagnostics_export_get",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "scan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/scans/{scan_id}/findings": {
+      "get": {
+        "summary": "Get Findings",
+        "operationId": "get_findings_v1_scans__scan_id__findings_get",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "scan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scan Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "severity",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 32
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Severity"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 128
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Findings V1 Scans  Scan Id  Findings Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/scans/{scan_id}/report": {
+      "get": {
+        "summary": "Get Report",
+        "operationId": "get_report_v1_scans__scan_id__report_get",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "scan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scan Id"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/ReportFormat",
+              "default": "json"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/scans/{scan_id}/report/{format}": {
+      "get": {
+        "summary": "Get Report By Path",
+        "operationId": "get_report_by_path_v1_scans__scan_id__report__format__get",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "scan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scan Id"
+            }
+          },
+          {
+            "name": "format",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ReportFormat"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/scans/{scan_id}/cancel": {
+      "post": {
+        "summary": "Cancel Scan",
+        "operationId": "cancel_scan_v1_scans__scan_id__cancel_post",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "scan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/scans/{scan_id}/retry": {
+      "post": {
+        "summary": "Retry Scan",
+        "operationId": "retry_scan_v1_scans__scan_id__retry_post",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "scan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "ReportFormat": {
+        "type": "string",
+        "enum": [
+          "json",
+          "markdown",
+          "sarif"
+        ],
+        "title": "ReportFormat"
+      },
+      "ScanCapabilities": {
+        "properties": {
+          "file_progress": {
+            "type": "boolean",
+            "title": "File Progress",
+            "default": false
+          },
+          "llm_requests": {
+            "type": "boolean",
+            "title": "Llm Requests",
+            "default": false
+          },
+          "event_protocol": {
+            "type": "boolean",
+            "title": "Event Protocol",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ScanCapabilities",
+        "description": "Capabilities that have been positively observed for one scan."
+      },
+      "ScanCoverage": {
+        "properties": {
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "reviewed": {
+            "type": "integer",
+            "minimum": 0,
+            "title": "Reviewed",
+            "default": 0
+          },
+          "failed": {
+            "type": "integer",
+            "minimum": 0,
+            "title": "Failed",
+            "default": 0
+          },
+          "skipped": {
+            "type": "integer",
+            "minimum": 0,
+            "title": "Skipped",
+            "default": 0
+          },
+          "percent": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100,
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percent"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ScanCoverage",
+        "description": "Truthful coverage counters; ``total`` is null when it is not known."
+      },
+      "ScanCreateRequest": {
+        "properties": {
+          "repository_url": {
+            "type": "string",
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Repository Url"
+          },
+          "ref": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 256
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ref"
+          },
+          "include": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 256,
+            "title": "Include"
+          },
+          "exclude": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 256,
+            "title": "Exclude"
+          },
+          "background": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 16384
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Background"
+          },
+          "source_disclosure_confirmed": {
+            "type": "boolean",
+            "title": "Source Disclosure Confirmed",
+            "description": "The caller confirms that selected source may be sent to the configured LLM.",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "repository_url"
+        ],
+        "title": "ScanCreateRequest",
+        "description": "One full-file scan request; repository registration is not required."
+      },
+      "ScanDiagnosticsResponse": {
+        "properties": {
+          "scan_id": {
+            "type": "string",
+            "title": "Scan Id"
+          },
+          "observation": {
+            "$ref": "#/components/schemas/ScanObservation"
+          },
+          "summary": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Summary"
+          },
+          "recent_errors": {
+            "items": {
+              "$ref": "#/components/schemas/ScanEvent"
+            },
+            "type": "array",
+            "title": "Recent Errors"
+          },
+          "evidence": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Evidence"
+          },
+          "suggestions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Suggestions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "scan_id",
+          "observation"
+        ],
+        "title": "ScanDiagnosticsResponse"
+      },
+      "ScanErrorSummary": {
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 256
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "retryable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retryable"
+          },
+          "suggestion": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggestion"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ScanErrorSummary",
+        "description": "A bounded, actionable summary of the most recent scan error."
+      },
+      "ScanEvent": {
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "minimum": 1,
+            "title": "Schema Version",
+            "default": 1
+          },
+          "event_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Id"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "cursor": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cursor"
+          },
+          "scan_id": {
+            "type": "string",
+            "title": "Scan Id"
+          },
+          "attempt": {
+            "type": "integer",
+            "minimum": 0,
+            "title": "Attempt"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "type": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Type"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 256
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 256
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "data": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Data"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated",
+            "default": false
+          },
+          "accepted": {
+            "type": "boolean",
+            "title": "Accepted",
+            "default": true
+          },
+          "dropped": {
+            "type": "boolean",
+            "title": "Dropped",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "timestamp",
+          "scan_id",
+          "attempt",
+          "type",
+          "created_at"
+        ],
+        "title": "ScanEvent",
+        "description": "One immutable sanitized event in the scan history."
+      },
+      "ScanEventsResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ScanEvent"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "type": "integer",
+            "minimum": 0,
+            "title": "Next Cursor"
+          },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More",
+            "default": false
+          },
+          "oldest_cursor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldest Cursor"
+          },
+          "history_truncated": {
+            "type": "boolean",
+            "title": "History Truncated",
+            "default": false
+          },
+          "expired_event_count": {
+            "type": "integer",
+            "minimum": 0,
+            "title": "Expired Event Count",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "ScanEventsResponse"
+      },
+      "ScanListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ScanResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "title": "Total"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "ScanListResponse"
+      },
+      "ScanObservation": {
+        "properties": {
+          "stage": {
+            "type": "string",
+            "maxLength": 256,
+            "title": "Stage",
+            "default": "unknown"
+          },
+          "stage_started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage Started At"
+          },
+          "elapsed_seconds": {
+            "type": "number",
+            "minimum": 0,
+            "title": "Elapsed Seconds",
+            "default": 0
+          },
+          "stage_elapsed_seconds": {
+            "type": "number",
+            "minimum": 0,
+            "title": "Stage Elapsed Seconds",
+            "default": 0
+          },
+          "last_output_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Output At"
+          },
+          "last_progress_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Progress At"
+          },
+          "worker_heartbeat_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worker Heartbeat At"
+          },
+          "deadline_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline At"
+          },
+          "activity_state": {
+            "type": "string",
+            "maxLength": 64,
+            "title": "Activity State",
+            "default": "unknown"
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/ScanCapabilities"
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/ScanCoverage"
+          },
+          "report_ready": {
+            "type": "boolean",
+            "title": "Report Ready",
+            "default": false
+          },
+          "history_available": {
+            "type": "boolean",
+            "title": "History Available",
+            "default": false
+          },
+          "error_summary": {
+            "$ref": "#/components/schemas/ScanErrorSummary"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 16,
+            "title": "Warnings"
+          },
+          "event_count": {
+            "type": "integer",
+            "minimum": 0,
+            "title": "Event Count",
+            "default": 0
+          },
+          "dropped_event_count": {
+            "type": "integer",
+            "minimum": 0,
+            "title": "Dropped Event Count",
+            "default": 0
+          },
+          "truncated_event_count": {
+            "type": "integer",
+            "minimum": 0,
+            "title": "Truncated Event Count",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ScanObservation",
+        "description": "Derived runtime observability returned with every scan response."
+      },
+      "ScanProgress": {
+        "properties": {
+          "total_files": {
+            "type": "integer",
+            "minimum": 0,
+            "title": "Total Files",
+            "default": 0
+          },
+          "reviewed_files": {
+            "type": "integer",
+            "minimum": 0,
+            "title": "Reviewed Files",
+            "default": 0
+          },
+          "failed_files": {
+            "type": "integer",
+            "minimum": 0,
+            "title": "Failed Files",
+            "default": 0
+          },
+          "skipped_files": {
+            "type": "integer",
+            "minimum": 0,
+            "title": "Skipped Files",
+            "default": 0
+          },
+          "percent": {
+            "type": "integer",
+            "maximum": 100,
+            "minimum": 0,
+            "title": "Percent",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ScanProgress"
+      },
+      "ScanResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "repository_url": {
+            "type": "string",
+            "title": "Repository Url"
+          },
+          "ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ref"
+          },
+          "commit_sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commit Sha"
+          },
+          "include": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Include"
+          },
+          "exclude": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Exclude"
+          },
+          "background": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Background"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ScanStatus"
+          },
+          "phase": {
+            "type": "string",
+            "title": "Phase"
+          },
+          "progress": {
+            "$ref": "#/components/schemas/ScanProgress"
+          },
+          "finding_count": {
+            "type": "integer",
+            "minimum": 0,
+            "title": "Finding Count",
+            "default": 0
+          },
+          "attempt": {
+            "type": "integer",
+            "minimum": 0,
+            "title": "Attempt",
+            "default": 0
+          },
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Key"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "observation": {
+            "$ref": "#/components/schemas/ScanObservation"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "repository_url",
+          "ref",
+          "include",
+          "exclude",
+          "background",
+          "status",
+          "phase",
+          "progress",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ScanResponse"
+      },
+      "ScanStatus": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "running",
+          "completed",
+          "partial",
+          "failed",
+          "canceled",
+          "skipped"
+        ],
+        "title": "ScanStatus"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "description": "Use the Argus API key as a Bearer token.",
+        "scheme": "bearer"
+      }
+    }
+  }
+}

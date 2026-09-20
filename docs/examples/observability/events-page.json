@@ -1,0 +1,29 @@
+{
+  "expired_event_count": 0,
+  "has_more": false,
+  "history_truncated": false,
+  "items": [
+    {
+      "accepted": true,
+      "attempt": 0,
+      "code": "scan_created",
+      "created_at": "2026-09-15T11:12:15Z",
+      "cursor": 1,
+      "data": {},
+      "dropped": false,
+      "event_id": 1,
+      "id": 1,
+      "level": "info",
+      "message": "Scan accepted and queued.",
+      "scan_id": "64e3d2c85bae42e0bb36e5ec9f4a1ca1",
+      "schema_version": 1,
+      "source": "api",
+      "stage": "queued",
+      "timestamp": "2026-09-15T11:12:15Z",
+      "truncated": false,
+      "type": "scan.created"
+    }
+  ],
+  "next_cursor": 1,
+  "oldest_cursor": 1
+}

@@ -1,0 +1,181 @@
+{
+  "evidence": [
+    {
+      "code": "scan_created",
+      "data": {},
+      "event_id": 1,
+      "stage": "queued",
+      "timestamp": "2026-09-15T11:16:57+00:00"
+    },
+    {
+      "code": "claim_acquired",
+      "data": {
+        "attempt": 1
+      },
+      "event_id": 2,
+      "stage": "preparing",
+      "timestamp": "2026-09-15T11:16:57+00:00"
+    },
+    {
+      "code": "phase_changed",
+      "data": {},
+      "event_id": 3,
+      "stage": "git_fetching",
+      "timestamp": "2026-09-15T11:16:57+00:00"
+    },
+    {
+      "code": "git_auth",
+      "data": {
+        "retryable": false
+      },
+      "event_id": 4,
+      "stage": "git_fetching",
+      "timestamp": "2026-09-15T11:16:57+00:00"
+    },
+    {
+      "code": "git_auth",
+      "data": {
+        "error_location": "integration.py:prepare:174",
+        "exception_type": "RepositoryFetchError",
+        "retryable": false
+      },
+      "event_id": 5,
+      "stage": "git_fetching",
+      "timestamp": "2026-09-15T11:16:57+00:00"
+    },
+    {
+      "code": "scan_failed",
+      "data": {
+        "finding_count": 0,
+        "retryable": true,
+        "status": "failed"
+      },
+      "event_id": 6,
+      "stage": "failed",
+      "timestamp": "2026-09-15T11:16:57+00:00"
+    }
+  ],
+  "observation": {
+    "activity_state": "failed",
+    "capabilities": {
+      "event_protocol": false,
+      "file_progress": false,
+      "llm_requests": false
+    },
+    "coverage": {
+      "failed": 0,
+      "percent": null,
+      "reviewed": 0,
+      "skipped": 0,
+      "total": null
+    },
+    "deadline_at": null,
+    "dropped_event_count": 0,
+    "elapsed_seconds": 0.0,
+    "error_summary": {
+      "code": "git_auth",
+      "message": "The Git boundary reported a bounded diagnostic.",
+      "retryable": false,
+      "source": "worker",
+      "suggestion": "Check the worker Git credential helper or SSH agent."
+    },
+    "event_count": 6,
+    "history_available": true,
+    "last_output_at": null,
+    "last_progress_at": "2026-09-15T11:16:57Z",
+    "report_ready": false,
+    "stage": "failed",
+    "stage_elapsed_seconds": 0.0,
+    "stage_started_at": "2026-09-15T11:16:57Z",
+    "truncated_event_count": 0,
+    "warnings": [],
+    "worker_heartbeat_at": "2026-09-15T11:16:57Z"
+  },
+  "recent_errors": [
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "git_auth",
+      "created_at": "2026-09-15T11:16:57Z",
+      "cursor": 4,
+      "data": {
+        "retryable": false
+      },
+      "dropped": false,
+      "event_id": 4,
+      "id": 4,
+      "level": "error",
+      "message": "The Git boundary reported a bounded diagnostic.",
+      "scan_id": "b5e3a341db1947c48f4f63e974e594de",
+      "schema_version": 1,
+      "source": "git",
+      "stage": "git_fetching",
+      "timestamp": "2026-09-15T11:16:57Z",
+      "truncated": false,
+      "type": "error"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "git_auth",
+      "created_at": "2026-09-15T11:16:57Z",
+      "cursor": 5,
+      "data": {
+        "error_location": "integration.py:prepare:174",
+        "exception_type": "RepositoryFetchError",
+        "retryable": false
+      },
+      "dropped": false,
+      "event_id": 5,
+      "id": 5,
+      "level": "error",
+      "message": "The Git boundary reported a bounded diagnostic.",
+      "scan_id": "b5e3a341db1947c48f4f63e974e594de",
+      "schema_version": 1,
+      "source": "worker",
+      "stage": "git_fetching",
+      "timestamp": "2026-09-15T11:16:57Z",
+      "truncated": false,
+      "type": "error"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "scan_failed",
+      "created_at": "2026-09-15T11:16:57Z",
+      "cursor": 6,
+      "data": {
+        "finding_count": 0,
+        "retryable": true,
+        "status": "failed"
+      },
+      "dropped": false,
+      "event_id": 6,
+      "id": 6,
+      "level": "error",
+      "message": "Scan failed.",
+      "scan_id": "b5e3a341db1947c48f4f63e974e594de",
+      "schema_version": 1,
+      "source": "worker",
+      "stage": "failed",
+      "timestamp": "2026-09-15T11:16:57Z",
+      "truncated": false,
+      "type": "scan.failed"
+    }
+  ],
+  "scan_id": "b5e3a341db1947c48f4f63e974e594de",
+  "suggestions": [
+    "Check the worker Git credential helper or SSH agent.",
+    "Review the bounded diagnostics and retry when the dependency or input is available."
+  ],
+  "summary": {
+    "attempt": 1,
+    "dropped_event_count": 0,
+    "event_count": 6,
+    "history_available": true,
+    "report_ready": false,
+    "stage": "failed",
+    "status": "failed",
+    "truncated_event_count": 0
+  }
+}

@@ -14,8 +14,8 @@ Git URL + ref + API Key + disclosure confirmation
 
 ## 构建与运行
 
-Dockerfile 有三个阶段：Go builder 从 `alibaba/open-code-review` 的固定 main commit
-`1f5caf4d5b7d5324c6e4c836c971136e4010192e` 构建 OCR；Python builder 安装 Argus 与 Uvicorn；runtime
+Dockerfile 有三个阶段：Go builder 从 `zsmj-xu/open-code-review` 的固定 commit
+`072808b6b0b12a1408b31889539c03878eff0f61` 构建 OCR；Python builder 安装 Argus 与 Uvicorn；runtime
 只保留 Python 服务、Git、证书和 OCR 可执行文件。运行时以非 root 用户启动。
 
 Compose 将 API 和 worker 分开，二者共享新的 `argus-service-data` named volume。API 通过
