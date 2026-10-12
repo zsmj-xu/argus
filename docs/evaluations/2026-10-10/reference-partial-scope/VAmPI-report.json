@@ -1,0 +1,75 @@
+{
+  "findings": [],
+  "scan": {
+    "attempt": 1,
+    "background": "只审查安全漏洞：说明实际入口、数据流、危险操作和缺失的防护；区分实际执行代码与注释示例。避免纯代码风格、维护性和性能问题。不执行目标代码。",
+    "base_commit": null,
+    "commit_sha": "f16052dce83f05847133ec98f01c5193a41de7d8",
+    "created_at": "2026-10-10T11:31:41Z",
+    "error": null,
+    "exclude": [],
+    "finding_count": 0,
+    "finished_at": "2026-10-10T11:45:07Z",
+    "id": "ee5e57c07fb44543a7593ff5969dd72d",
+    "idempotency_key": "github-eval-20261010-VAmPI",
+    "include": [
+      "api_views",
+      "models",
+      "app.py",
+      "config.py"
+    ],
+    "metadata": {},
+    "observation": {
+      "activity_state": "canceled",
+      "capabilities": {
+        "event_protocol": true,
+        "file_progress": true,
+        "llm_requests": false
+      },
+      "coverage": {
+        "failed": 0,
+        "percent": 60,
+        "reviewed": 6,
+        "skipped": 0,
+        "total": 10
+      },
+      "deadline_at": "2026-10-10T12:14:13Z",
+      "dropped_event_count": 0,
+      "elapsed_seconds": 806.0,
+      "error_summary": {
+        "code": "process_exited",
+        "message": "OpenCodeReview process exited.",
+        "retryable": true,
+        "source": "ocr",
+        "suggestion": "Review the recent diagnostics and retry the scan if the input or dependency is available."
+      },
+      "event_count": 44,
+      "history_available": true,
+      "last_output_at": null,
+      "last_progress_at": "2026-10-10T11:45:07Z",
+      "report_ready": false,
+      "stage": "canceled",
+      "stage_elapsed_seconds": 0.0,
+      "stage_started_at": "2026-10-10T11:45:07Z",
+      "truncated_event_count": 0,
+      "warnings": [],
+      "worker_heartbeat_at": "2026-10-10T11:44:41Z"
+    },
+    "phase": "canceled",
+    "progress": {
+      "failed_files": 0,
+      "percent": 60,
+      "reviewed_files": 6,
+      "skipped_files": 0,
+      "total_files": 10
+    },
+    "project_id": "7bf3524800ab47ef94be498fefcae4a3",
+    "ref": "master",
+    "repository_url": "https://github.com/erev0s/VAmPI.git",
+    "scan_type": "full",
+    "session_id": null,
+    "started_at": "2026-10-10T11:44:11Z",
+    "status": "canceled",
+    "updated_at": "2026-10-10T11:45:07Z"
+  }
+}

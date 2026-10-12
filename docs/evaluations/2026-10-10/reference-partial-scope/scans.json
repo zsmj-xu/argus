@@ -1,0 +1,47 @@
+[
+  {
+    "name": "VAmPI",
+    "repository_url": "https://github.com/erev0s/VAmPI.git",
+    "branch": "master",
+    "include": [
+      "api_views",
+      "models",
+      "app.py",
+      "config.py"
+    ],
+    "project_id": "7bf3524800ab47ef94be498fefcae4a3",
+    "scan_id": "ee5e57c07fb44543a7593ff5969dd72d",
+    "status": "canceled",
+    "commit_sha": "f16052dce83f05847133ec98f01c5193a41de7d8"
+  },
+  {
+    "name": "NodeGoat",
+    "repository_url": "https://github.com/OWASP/NodeGoat.git",
+    "branch": "master",
+    "include": [
+      "app/routes",
+      "app/data",
+      "server.js",
+      "config"
+    ],
+    "project_id": "d3814a88f91844fb8115a3e6137bc2dd",
+    "scan_id": "b7301224fadb400182856b6f20c4a3d7",
+    "status": "completed",
+    "commit_sha": "c5cb68a7084e4ae7dcc60e6a98768720a81841e8"
+  },
+  {
+    "name": "WebGoat",
+    "repository_url": "https://github.com/WebGoat/WebGoat.git",
+    "branch": "main",
+    "include": [
+      "src/main/java/org/owasp/webgoat/lessons/sqlinjection",
+      "src/main/java/org/owasp/webgoat/lessons/xxe",
+      "src/main/java/org/owasp/webgoat/lessons/deserialization",
+      "src/main/java/org/owasp/webgoat/lessons/idor"
+    ],
+    "project_id": "19eb7c34c6f340cc888638042af9a201",
+    "scan_id": "1f55d5d925e447b79f558a79d878f581",
+    "status": "completed",
+    "commit_sha": "044948d057b249735be2bfc14eccc9e3dc2eac34"
+  }
+]

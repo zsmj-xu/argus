@@ -17,6 +17,7 @@ runs/
 
 # Env
 .env
+deploy/gitlab.gitconfig
 
 # Python packaging
 *.egg-info/

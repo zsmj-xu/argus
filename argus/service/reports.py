@@ -65,6 +65,31 @@ def render_report(report: ScanReport, report_format: ReportFormat) -> tuple[str,
     )
 
 
+def render_project_report(project: dict[str, Any], report: ScanReport, report_format: ReportFormat) -> tuple[str, str]:
+    """Export the aggregate project snapshot without implying it is one scan's coverage."""
+    if report_format is ReportFormat.SARIF:
+        document = render_sarif(report)
+        run = document["runs"][0]
+        run["automationDetails"] = {"id": f"project/{project['id']}"}
+        run["properties"] = {"report_scope": "project", "project_id": project["id"], "branch": project["branch"]}
+        return json.dumps(document, ensure_ascii=False, indent=2), "application/sarif+json"
+    lines = [
+        f"# 项目漏洞报告：{_md_text(project['name'])}",
+        "",
+        f"- 仓库：`{_md_text(project['repository_url'])}`",
+        f"- 分支：`{_md_text(project['branch'])}`",
+        f"- 漏洞数量：{len(report.findings)}",
+        "",
+        "> 本报告汇总项目的去重漏洞；处理状态由人工维护。未执行动态修复验证。",
+        "",
+    ]
+    # Reuse the escaped finding renderer, excluding the per-scan coverage header.
+    body = render_markdown(report)
+    marker = "## 1. " if report.findings else "## 扫描结果"
+    lines.append(body[body.index(marker) :])
+    return "\n".join(lines), "text/markdown; charset=utf-8"
+
+
 def render_markdown(report: ScanReport) -> str:
     scan = report.scan
     progress = scan.progress
@@ -74,6 +99,8 @@ def render_markdown(report: ScanReport) -> str:
         f"- 代码仓库：`{_md_text(scan.repository_url)}`",
         f"- 分支或版本：`{_md_text(scan.ref or '默认')}`",
         f"- 提交：`{_md_text(scan.commit_sha or '未知')}`",
+        f"- 扫描方式：`{'增量' if scan.scan_type == 'incremental' else '全仓'}`",
+        f"- 增量起点：`{_md_text(scan.base_commit or '不适用')}`",
         f"- 状态：`{_md_text(_STATUS_LABELS.get(scan.status.value, scan.status.value))}`",
         f"- 阶段：`{_md_text(_PHASE_LABELS.get(scan.phase, scan.phase))}`",
         f"- 文件：已审查 `{progress.reviewed_files}/{progress.total_files}`",
@@ -110,6 +137,15 @@ def render_markdown(report: ScanReport) -> str:
                 "",
             ]
         )
+        if finding.metadata.get("manual_status"):
+            labels = {
+                "open": "待处理",
+                "in_progress": "处理中",
+                "fixed": "已修复",
+                "false_positive": "误报",
+                "accepted_risk": "接受风险",
+            }
+            lines.extend([f"- 人工处理状态：{labels.get(str(finding.metadata['manual_status']), '待处理')}", ""])
         if finding.evidence:
             lines.extend(["### 代码证据", "", _code_block(finding.evidence), ""])
         if finding.remediation:
@@ -143,6 +179,7 @@ def render_sarif(report: ScanReport) -> dict[str, Any]:
             "properties": {
                 "category": finding.category,
                 "severity": finding.severity,
+                "manual_status": finding.metadata.get("manual_status"),
                 "confidence": finding.confidence,
                 "evidence": finding.evidence,
                 "remediation": finding.remediation,

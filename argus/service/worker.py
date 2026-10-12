@@ -17,6 +17,7 @@ import uuid
 from .models import ScanProgress, ScanStatus, ServiceScanResult
 from .observability import EVENT_DATA_WHITELIST
 from .store import LeaseLost, ScanStore, WorkerScan
+from .execution import execution_slot
 
 
 ProgressCallback = Callable[[ScanProgress], None]
@@ -56,6 +57,8 @@ _SAFE_FAILURE_CODES = {
     "cancel",
     "unknown",
     "limit",
+    "baseline_missing",
+    "baseline_diverged",
 }
 _KNOWN_EVENT_TYPE_PREFIXES = ("file.", "llm.", "tool.")
 
@@ -101,6 +104,15 @@ class ScanWorker:
         self.heartbeat_observer = heartbeat_observer
 
     def run_once(self) -> ServiceScanResult | None:
+        root = getattr(self.workspace_provider, "root", None)
+        if isinstance(root, Path):
+            with execution_slot(root) as acquired:
+                if not acquired:
+                    return None
+                return self._run_once()
+        return self._run_once()
+
+    def _run_once(self) -> ServiceScanResult | None:
         scan = self.store.claim_next(self.worker_id, lease_seconds=self.lease_seconds)
         if scan is None:
             return None
@@ -231,11 +243,17 @@ class ScanWorker:
                 commit_sha = getattr(prepared, "commit_sha", None)
                 if isinstance(commit_sha, str) and commit_sha:
                     self.store.record_commit(scan.id, self.worker_id, commit_sha, lease_token=scan.lease_token)
+                    scan.commit_sha = commit_sha
                 # Providers emit this transition after the checkout.  Keep a
                 # worker-side fallback for simple providers and test doubles.
                 set_stage("source_checking")
                 set_stage("ocr_starting")
-                result = self.runner.run(scan, workspace_path, report_progress, should_cancel, record_event)
+                if scan.base_commit and scan.base_commit == scan.commit_sha:
+                    result = ServiceScanResult(
+                        status=ScanStatus.COMPLETED, commit_sha=scan.commit_sha, metadata={"no_changes": True}
+                    )
+                else:
+                    result = self.runner.run(scan, workspace_path, report_progress, should_cancel, record_event)
                 # A runner that does not expose the optional event protocol
                 # still gets the stable parsing/persisting lifecycle.
                 set_stage("parsing")
@@ -405,6 +423,9 @@ def main() -> None:
 
     data_root = Path(os.getenv("ARGUS_DATA_DIR", "data")).resolve()
     from .store import resolve_scan_database
+    from .gitlab import gitlab_environment
+
+    gitlab_environment()
 
     database = resolve_scan_database()
     store = ScanStore(database, max_queue=_positive_env_int("ARGUS_MAX_QUEUE", 100))

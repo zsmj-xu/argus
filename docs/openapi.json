@@ -2,10 +2,603 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Argus White-box Scan Service",
-    "description": "Internal API for bounded OpenCodeReview full-file scans.",
-    "version": "1.0.0"
+    "description": "Internal API for repository/branch projects, full-file and incremental OpenCodeReview scans.",
+    "version": "1.1.0"
   },
   "paths": {
+    "/v1/projects": {
+      "post": {
+        "summary": "Create Project",
+        "operationId": "create_project_v1_projects_post",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Create Project V1 Projects Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "List Projects",
+        "operationId": "list_projects_v1_projects_get",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response List Projects V1 Projects Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/projects/{project_id}": {
+      "get": {
+        "summary": "Get Project",
+        "operationId": "get_project_v1_projects__project_id__get",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Project V1 Projects  Project Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update Project",
+        "operationId": "update_project_v1_projects__project_id__patch",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Update Project V1 Projects  Project Id  Patch"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/projects/{project_id}/scans": {
+      "get": {
+        "summary": "Project Scans",
+        "operationId": "project_scans_v1_projects__project_id__scans_get",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Project Scans V1 Projects  Project Id  Scans Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Scan Project",
+        "operationId": "scan_project_v1_projects__project_id__scans_post",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectScanRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/projects/{project_id}/vulnerabilities": {
+      "get": {
+        "summary": "Project Vulnerabilities",
+        "operationId": "project_vulnerabilities_v1_projects__project_id__vulnerabilities_get",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 32
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "severity",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 32
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Severity"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 128
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 256
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Project Vulnerabilities V1 Projects  Project Id  Vulnerabilities Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/projects/{project_id}/vulnerabilities/{vulnerability_id}": {
+      "patch": {
+        "summary": "Update Vulnerability",
+        "operationId": "update_vulnerability_v1_projects__project_id__vulnerabilities__vulnerability_id__patch",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "vulnerability_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Vulnerability Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VulnerabilityUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Update Vulnerability V1 Projects  Project Id  Vulnerabilities  Vulnerability Id  Patch"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/projects/{project_id}/report": {
+      "get": {
+        "summary": "Project Report",
+        "operationId": "project_report_v1_projects__project_id__report_get",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/ReportFormat",
+              "default": "json"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/scans": {
       "post": {
         "summary": "Create Scan",
@@ -667,6 +1260,126 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "ProjectCreateRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "repository_url": {
+            "type": "string",
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Repository Url"
+          },
+          "branch": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Branch"
+          },
+          "include": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 256,
+            "title": "Include"
+          },
+          "exclude": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 256,
+            "title": "Exclude"
+          },
+          "background": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 16384
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Background"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "repository_url",
+          "branch"
+        ],
+        "title": "ProjectCreateRequest"
+      },
+      "ProjectScanRequest": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "pattern": "^(auto|full)$",
+            "title": "Mode",
+            "default": "auto"
+          },
+          "source_disclosure_confirmed": {
+            "type": "boolean",
+            "title": "Source Disclosure Confirmed",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ProjectScanRequest"
+      },
+      "ProjectUpdateRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "include": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 256,
+            "title": "Include"
+          },
+          "exclude": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 256,
+            "title": "Exclude"
+          },
+          "background": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 16384
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Background"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "ProjectUpdateRequest"
+      },
       "ReportFormat": {
         "type": "string",
         "enum": [
@@ -705,7 +1418,7 @@
             "anyOf": [
               {
                 "type": "integer",
-                "minimum": 0
+                "minimum": 0.0
               },
               {
                 "type": "null"
@@ -715,19 +1428,19 @@
           },
           "reviewed": {
             "type": "integer",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Reviewed",
             "default": 0
           },
           "failed": {
             "type": "integer",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Failed",
             "default": 0
           },
           "skipped": {
             "type": "integer",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Skipped",
             "default": 0
           },
@@ -735,8 +1448,8 @@
             "anyOf": [
               {
                 "type": "integer",
-                "maximum": 100,
-                "minimum": 0
+                "maximum": 100.0,
+                "minimum": 0.0
               },
               {
                 "type": "null"
@@ -757,6 +1470,23 @@
             "maxLength": 4096,
             "minLength": 1,
             "title": "Repository Url"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "mode": {
+            "type": "string",
+            "pattern": "^(auto|full)$",
+            "title": "Mode",
+            "default": "auto"
           },
           "ref": {
             "anyOf": [
@@ -929,7 +1659,7 @@
         "properties": {
           "schema_version": {
             "type": "integer",
-            "minimum": 1,
+            "minimum": 1.0,
             "title": "Schema Version",
             "default": 1
           },
@@ -937,7 +1667,7 @@
             "anyOf": [
               {
                 "type": "integer",
-                "minimum": 1
+                "minimum": 1.0
               },
               {
                 "type": "null"
@@ -954,7 +1684,7 @@
             "anyOf": [
               {
                 "type": "integer",
-                "minimum": 1
+                "minimum": 1.0
               },
               {
                 "type": "null"
@@ -966,7 +1696,7 @@
             "anyOf": [
               {
                 "type": "integer",
-                "minimum": 1
+                "minimum": 1.0
               },
               {
                 "type": "null"
@@ -980,7 +1710,7 @@
           },
           "attempt": {
             "type": "integer",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Attempt"
           },
           "source": {
@@ -1098,7 +1828,7 @@
           },
           "next_cursor": {
             "type": "integer",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Next Cursor"
           },
           "has_more": {
@@ -1124,7 +1854,7 @@
           },
           "expired_event_count": {
             "type": "integer",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Expired Event Count",
             "default": 0
           }
@@ -1148,7 +1878,7 @@
           },
           "total": {
             "type": "integer",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Total"
           }
         },
@@ -1182,13 +1912,13 @@
           },
           "elapsed_seconds": {
             "type": "number",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Elapsed Seconds",
             "default": 0
           },
           "stage_elapsed_seconds": {
             "type": "number",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Stage Elapsed Seconds",
             "default": 0
           },
@@ -1275,19 +2005,19 @@
           },
           "event_count": {
             "type": "integer",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Event Count",
             "default": 0
           },
           "dropped_event_count": {
             "type": "integer",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Dropped Event Count",
             "default": 0
           },
           "truncated_event_count": {
             "type": "integer",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Truncated Event Count",
             "default": 0
           }
@@ -1301,32 +2031,32 @@
         "properties": {
           "total_files": {
             "type": "integer",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Total Files",
             "default": 0
           },
           "reviewed_files": {
             "type": "integer",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Reviewed Files",
             "default": 0
           },
           "failed_files": {
             "type": "integer",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Failed Files",
             "default": 0
           },
           "skipped_files": {
             "type": "integer",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Skipped Files",
             "default": 0
           },
           "percent": {
             "type": "integer",
-            "maximum": 100,
-            "minimum": 0,
+            "maximum": 100.0,
+            "minimum": 0.0,
             "title": "Percent",
             "default": 0
           }
@@ -1340,6 +2070,33 @@
           "id": {
             "type": "string",
             "title": "Id"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "scan_type": {
+            "type": "string",
+            "title": "Scan Type",
+            "default": "full"
+          },
+          "base_commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Commit"
           },
           "repository_url": {
             "type": "string",
@@ -1404,13 +2161,13 @@
           },
           "finding_count": {
             "type": "integer",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Finding Count",
             "default": 0
           },
           "attempt": {
             "type": "integer",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Attempt",
             "default": 0
           },
@@ -1559,6 +2316,30 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "VulnerabilityStatus": {
+        "type": "string",
+        "enum": [
+          "open",
+          "in_progress",
+          "fixed",
+          "false_positive",
+          "accepted_risk"
+        ],
+        "title": "VulnerabilityStatus"
+      },
+      "VulnerabilityUpdateRequest": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/VulnerabilityStatus"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "VulnerabilityUpdateRequest"
       }
     },
     "securitySchemes": {

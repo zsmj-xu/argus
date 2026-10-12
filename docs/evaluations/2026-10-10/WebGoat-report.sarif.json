@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "runs": [
+    {
+      "automationDetails": {
+        "id": "argus/73d27937e980444e8d32d01f65d575df"
+      },
+      "properties": {
+        "commit": "044948d057b249735be2bfc14eccc9e3dc2eac34",
+        "status": "failed"
+      },
+      "results": [],
+      "tool": {
+        "driver": {
+          "informationUri": "https://github.com/alibaba/open-code-review",
+          "name": "Argus White-box Scan Service"
+        }
+      }
+    }
+  ],
+  "version": "2.1.0"
+}

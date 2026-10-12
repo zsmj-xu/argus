@@ -9,12 +9,15 @@ import os
 from pathlib import Path
 import re
 import shutil
+import sqlite3
 from typing import Annotated, Callable, TypeVar
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Response, Security, status
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
+
+from argus import __version__
 
 from .models import (
     ReportFormat,
@@ -24,8 +27,14 @@ from .models import (
     ScanListResponse,
     ScanReport,
     ScanResponse,
+    ProjectCreateRequest,
+    ProjectUpdateRequest,
+    ProjectScanRequest,
+    VulnerabilityUpdateRequest,
+    FindingResponse,
 )
-from .reports import render_report
+from .projects import ProjectService
+from .reports import render_report, render_project_report
 from .store import (
     IdempotencyConflict,
     QueueFull,
@@ -47,8 +56,8 @@ def create_app(store: ScanStore | None = None) -> FastAPI:
         )
     app = FastAPI(
         title="Argus White-box Scan Service",
-        version="1.0.0",
-        description="Internal API for bounded OpenCodeReview full-file scans.",
+        version=__version__,
+        description="Internal API for repository/branch projects, full-file and incremental OpenCodeReview scans.",
     )
     app.state.scan_store = store
 
@@ -80,6 +89,93 @@ def create_app(store: ScanStore | None = None) -> FastAPI:
             )
 
     auth = Depends(require_auth)
+    projects = ProjectService(store)
+
+    @app.post("/v1/projects", status_code=201, dependencies=[auth])
+    def create_project(payload: ProjectCreateRequest) -> dict[str, object]:
+        try:
+            return projects.create(payload)
+        except sqlite3.IntegrityError as exc:
+            raise HTTPException(409, "a project for this repository and branch already exists") from exc
+
+    @app.get("/v1/projects", dependencies=[auth])
+    def list_projects(limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0)) -> dict[str, object]:
+        return projects.list(limit, offset)
+
+    @app.get("/v1/projects/{project_id}", dependencies=[auth])
+    def get_project(project_id: str) -> dict[str, object]:
+        return _not_found(lambda: projects.get(project_id))
+
+    @app.patch("/v1/projects/{project_id}", dependencies=[auth])
+    def update_project(project_id: str, payload: ProjectUpdateRequest) -> dict[str, object]:
+        return _not_found(lambda: projects.update(project_id, payload))
+
+    @app.get("/v1/projects/{project_id}/scans", dependencies=[auth])
+    def project_scans(
+        project_id: str, limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0)
+    ) -> dict[str, object]:
+        return _not_found(lambda: projects.scans(project_id, limit, offset))
+
+    @app.post("/v1/projects/{project_id}/scans", response_model=ScanResponse, status_code=202, dependencies=[auth])
+    def scan_project(
+        project_id: str,
+        payload: ProjectScanRequest,
+        response: Response,
+        idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    ) -> ScanResponse:
+        project = _not_found(lambda: projects.get(project_id))
+        request = ScanCreateRequest(
+            repository_url=str(project["repository_url"]),
+            project_id=project_id,
+            mode=payload.mode,
+            source_disclosure_confirmed=payload.source_disclosure_confirmed,
+        )
+        return submit_scan(request, response, idempotency_key)
+
+    @app.get("/v1/projects/{project_id}/vulnerabilities", dependencies=[auth])
+    def project_vulnerabilities(
+        project_id: str,
+        limit: int = Query(100, ge=1, le=500),
+        offset: int = Query(0, ge=0),
+        status: str | None = Query(None, max_length=32),
+        severity: str | None = Query(None, max_length=32),
+        category: str | None = Query(None, max_length=128),
+        search: str | None = Query(None, max_length=256),
+    ) -> dict[str, object]:
+        return _not_found(
+            lambda: projects.vulnerabilities(project_id, limit, offset, status, severity, category, search)
+        )
+
+    @app.patch("/v1/projects/{project_id}/vulnerabilities/{vulnerability_id}", dependencies=[auth])
+    def update_vulnerability(
+        project_id: str, vulnerability_id: str, payload: VulnerabilityUpdateRequest
+    ) -> dict[str, object]:
+        return _not_found(lambda: projects.set_status(project_id, vulnerability_id, payload.status.value))
+
+    @app.get("/v1/projects/{project_id}/report", dependencies=[auth])
+    def project_report(project_id: str, format: ReportFormat = Query(ReportFormat.JSON)) -> Response:
+        project = _not_found(lambda: projects.get(project_id))
+        vulnerabilities = projects.vulnerabilities(project_id, limit=1_000_000)["items"]
+        if format is ReportFormat.JSON:
+            return Response(
+                json.dumps({"project": project, "vulnerabilities": vulnerabilities}, ensure_ascii=False),
+                media_type="application/json",
+            )
+        scan_list = projects.scans(project_id, 1, 0)["items"]
+        if not scan_list:
+            raise HTTPException(409, "project has no scan yet")
+        findings = [
+            FindingResponse.model_validate(
+                {
+                    **{k: value for k, value in v.items() if k not in {"project_id", "status", "updated_at"}},
+                    "scan_id": scan_list[0].id,
+                    "metadata": {**v["metadata"], "manual_status": v["status"]},
+                }
+            )
+            for v in vulnerabilities
+        ]
+        content, media_type = render_project_report(project, ScanReport(scan=scan_list[0], findings=findings), format)
+        return Response(content, media_type=media_type)
 
     frontend_dir = os.getenv("ARGUS_FRONTEND_DIR")
     dist_path = (
@@ -141,6 +237,9 @@ def create_app(store: ScanStore | None = None) -> FastAPI:
         response: Response,
         idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
     ) -> ScanResponse:
+        raise HTTPException(410, "create a project and use /v1/projects/{id}/scans")
+
+    def submit_scan(payload: ScanCreateRequest, response: Response, idempotency_key: str | None) -> ScanResponse:
         if not payload.source_disclosure_confirmed:
             raise HTTPException(
                 status_code=400,
@@ -152,6 +251,8 @@ def create_app(store: ScanStore | None = None) -> FastAPI:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except QueueFull as exc:
             raise HTTPException(status_code=429, detail=str(exc)) from exc
+        except ScanStateError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         if not created:
@@ -299,46 +400,13 @@ def _render_report(store: ScanStore, scan_id: str, report_format: ReportFormat) 
     return Response(content=content, media_type=media_type)
 
 
-_INDEX_HTML = """<!doctype html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Argus White-box Scan</title>
-  <style>
-    body{font:16px system-ui,sans-serif;max-width:960px;margin:40px auto;padding:0 20px;color:#172033}
-    input,textarea,button{font:inherit;padding:9px;margin:4px 0;width:100%;box-sizing:border-box}
-    button{cursor:pointer;background:#172033;color:white;border:0;border-radius:4px}
-    table{width:100%;border-collapse:collapse;margin-top:24px}th,td{text-align:left;padding:8px;border-bottom:1px solid #ddd}
-    pre{white-space:pre-wrap;background:#f4f6f8;padding:12px} .muted{color:#657084}
-  </style>
-</head>
-<body>
-  <h1>Argus 白盒扫描</h1>
-  <p class="muted">提交 Git 仓库，使用 OpenCodeReview 进行静态源码审查。</p>
-  <form id="scan-form">
-    <label>API Key<input id="key" type="password" required autocomplete="off"></label>
-    <label>Git URL<input id="url" placeholder="https://github.com/example/project.git" required></label>
-    <label>Ref<input id="ref" placeholder="main 或 commit SHA"></label>
-    <label>背景说明<textarea id="background" rows="3"></textarea></label>
-    <label><input id="disclosure" type="checkbox" required style="width:auto"> 我确认本次选中的源码可以发送给配置的 LLM</label>
-    <button>提交扫描</button>
-  </form>
-  <pre id="message"></pre>
-  <table><thead><tr><th>ID</th><th>状态</th><th>仓库</th><th>发现</th></tr></thead><tbody id="scans"></tbody></table>
-  <script>
-    const form=document.querySelector('#scan-form'), msg=document.querySelector('#message'), body=document.querySelector('#scans');
-    const headers=()=>({'Authorization':'Bearer '+document.querySelector('#key').value});
-    async function refresh(){const r=await fetch('/v1/scans',{headers:headers()});if(!r.ok)return;const d=await r.json();body.replaceChildren(...d.items.map(s=>{const tr=document.createElement('tr');for(const v of [s.id,s.status,s.repository_url,String(s.finding_count)]){const td=document.createElement('td');td.textContent=v;tr.append(td)}return tr}))}
-    form.addEventListener('submit',async e=>{e.preventDefault();const p={repository_url:document.querySelector('#url').value,background:document.querySelector('#background').value||null,source_disclosure_confirmed:true};const ref=document.querySelector('#ref').value.trim();if(ref)p.ref=ref;const r=await fetch('/v1/scans',{method:'POST',headers:{...headers(),'Content-Type':'application/json','Idempotency-Key':crypto.randomUUID()},body:JSON.stringify(p)});msg.textContent=await r.text();refresh()});
-  </script>
-</body>
-</html>"""
+_INDEX_HTML = """<!doctype html><html lang="zh-CN"><meta charset="utf-8">
+<title>Argus</title><main><h1>Argus</h1><p>前端尚未构建。请构建前端或使用完整 Docker 镜像。</p></main></html>"""
 
 
 def _positive_env_int(name: str, default: int) -> int:
-    raw = os.getenv(name)
     try:
-        value = int(raw) if raw is not None else default
+        value = int(os.getenv(name, str(default)))
     except ValueError:
         return default
     return value if value > 0 else default

@@ -1,0 +1,72 @@
+{
+  "id": "ee5e57c07fb44543a7593ff5969dd72d",
+  "project_id": "7bf3524800ab47ef94be498fefcae4a3",
+  "scan_type": "full",
+  "base_commit": null,
+  "repository_url": "https://github.com/erev0s/VAmPI.git",
+  "ref": "master",
+  "commit_sha": "f16052dce83f05847133ec98f01c5193a41de7d8",
+  "include": [
+    "api_views",
+    "models",
+    "app.py",
+    "config.py"
+  ],
+  "exclude": [],
+  "background": "只审查安全漏洞：说明实际入口、数据流、危险操作和缺失的防护；区分实际执行代码与注释示例。避免纯代码风格、维护性和性能问题。不执行目标代码。",
+  "status": "canceled",
+  "phase": "canceled",
+  "progress": {
+    "total_files": 10,
+    "reviewed_files": 6,
+    "failed_files": 0,
+    "skipped_files": 0,
+    "percent": 60
+  },
+  "finding_count": 0,
+  "attempt": 1,
+  "idempotency_key": "github-eval-20261010-VAmPI",
+  "session_id": null,
+  "metadata": {},
+  "error": null,
+  "created_at": "2026-10-10T11:31:41Z",
+  "updated_at": "2026-10-10T11:45:07Z",
+  "started_at": "2026-10-10T11:44:11Z",
+  "finished_at": "2026-10-10T11:45:07Z",
+  "observation": {
+    "stage": "canceled",
+    "stage_started_at": "2026-10-10T11:45:07Z",
+    "elapsed_seconds": 806.0,
+    "stage_elapsed_seconds": 0.0,
+    "last_output_at": null,
+    "last_progress_at": "2026-10-10T11:45:07Z",
+    "worker_heartbeat_at": "2026-10-10T11:44:41Z",
+    "deadline_at": "2026-10-10T12:14:13Z",
+    "activity_state": "canceled",
+    "capabilities": {
+      "file_progress": true,
+      "llm_requests": false,
+      "event_protocol": true
+    },
+    "coverage": {
+      "total": 10,
+      "reviewed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "percent": 60
+    },
+    "report_ready": false,
+    "history_available": true,
+    "error_summary": {
+      "code": "process_exited",
+      "message": "OpenCodeReview process exited.",
+      "retryable": true,
+      "suggestion": "Review the recent diagnostics and retry the scan if the input or dependency is available.",
+      "source": "ocr"
+    },
+    "warnings": [],
+    "event_count": 44,
+    "dropped_event_count": 0,
+    "truncated_event_count": 0
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "formal_scan_ids": [
+    "1371b4ed88e747a1bc75de3eb74f95d7",
+    "5af058937a134c6791dfd94a95b21a6a",
+    "73d27937e980444e8d32d01f65d575df"
+  ],
+  "completed": 2,
+  "failed_timeout": 1,
+  "partial_scope_results_used": false,
+  "reviewable_files": 827,
+  "reviewed_files_observed": 255,
+  "file_failed": 1,
+  "unfinished": 571,
+  "normalized_findings": 374,
+  "security_classified_findings": 98,
+  "known_case_delivery": {
+    "matched": 17,
+    "total": 28,
+    "percent": 60.7,
+    "note": "end-to-end delivery, includes timeout; not global model recall"
+  },
+  "known_tokens_completed_scans": 3497591,
+  "webgoat_tokens": null,
+  "total_tokens_all_scans": null
+}

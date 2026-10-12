@@ -1,0 +1,93 @@
+{
+  "id": "73d27937e980444e8d32d01f65d575df",
+  "project_id": "19eb7c34c6f340cc888638042af9a201",
+  "scan_type": "full",
+  "base_commit": null,
+  "repository_url": "https://github.com/WebGoat/WebGoat.git",
+  "ref": "main",
+  "commit_sha": "044948d057b249735be2bfc14eccc9e3dc2eac34",
+  "include": [],
+  "exclude": [],
+  "background": null,
+  "status": "failed",
+  "phase": "failed",
+  "progress": {
+    "total_files": 713,
+    "reviewed_files": 141,
+    "failed_files": 1,
+    "skipped_files": 0,
+    "percent": 20
+  },
+  "finding_count": 0,
+  "attempt": 1,
+  "idempotency_key": "github-full-default-evaluation-20261010-WebGoat",
+  "session_id": null,
+  "metadata": {
+    "ocr_status": "failed",
+    "ocr_scan_schema_version": null,
+    "ocr_outcome": null,
+    "ocr_coverage": null,
+    "ocr_summary": {},
+    "ocr_warnings": [],
+    "ocr_warning_count": 0,
+    "coverage_total_known": false,
+    "ocr_llm": {},
+    "ocr_exit_code": -9,
+    "ocr_duration_ms": 1800039,
+    "ocr_timeout_seconds": 1800.0,
+    "ocr_expected_deadline_seconds": 1800.0,
+    "ocr_expected_deadline_at": "2026-10-10T12:41:50.928164+00:00",
+    "ocr_engine": "opencodereview",
+    "ocr_engine_commit": "072808b6b0b12a1408b31889539c03878eff0f61",
+    "ocr_output_language": "zh-CN",
+    "ocr_capabilities": {
+      "event_callback": true,
+      "pipe_events": true,
+      "event_protocol": true,
+      "file_progress": false,
+      "llm_requests": false
+    },
+    "ocr_event_protocol": true
+  },
+  "error": "ocr_timeout",
+  "created_at": "2026-10-10T11:45:07Z",
+  "updated_at": "2026-10-10T12:41:51Z",
+  "started_at": "2026-10-10T12:11:30Z",
+  "finished_at": "2026-10-10T12:41:51Z",
+  "observation": {
+    "stage": "failed",
+    "stage_started_at": "2026-10-10T12:41:51Z",
+    "elapsed_seconds": 3404.0,
+    "stage_elapsed_seconds": 0.0,
+    "last_output_at": "2026-10-10T12:41:47Z",
+    "last_progress_at": "2026-10-10T12:41:51Z",
+    "worker_heartbeat_at": "2026-10-10T12:41:30Z",
+    "deadline_at": "2026-10-10T12:41:50Z",
+    "activity_state": "failed",
+    "capabilities": {
+      "file_progress": true,
+      "llm_requests": false,
+      "event_protocol": true
+    },
+    "coverage": {
+      "total": 713,
+      "reviewed": 141,
+      "failed": 1,
+      "skipped": 0,
+      "percent": 20
+    },
+    "report_ready": false,
+    "history_available": true,
+    "error_summary": {
+      "code": "process_exited",
+      "message": "OpenCodeReview process exited.",
+      "retryable": true,
+      "suggestion": "Review the recent diagnostics and retry the scan if the input or dependency is available.",
+      "source": "ocr"
+    },
+    "warnings": [],
+    "event_count": 455,
+    "dropped_event_count": 0,
+    "truncated_event_count": 0
+  }
+}

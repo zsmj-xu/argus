@@ -75,6 +75,8 @@ class ScanCreateRequest(ServiceModel):
     """One full-file scan request; repository registration is not required."""
 
     repository_url: str = Field(min_length=1, max_length=4096)
+    project_id: str | None = None
+    mode: str = Field(default="auto", pattern="^(auto|full)$")
     ref: str | None = Field(default=None, max_length=256)
     include: list[str] = Field(default_factory=list, max_length=256)
     exclude: list[str] = Field(default_factory=list, max_length=256)
@@ -252,6 +254,9 @@ class FindingResponse(FindingCreate):
 
 class ScanResponse(ServiceModel):
     id: str
+    project_id: str | None = None
+    scan_type: str = "full"
+    base_commit: str | None = None
     repository_url: str
     ref: str | None
     commit_sha: str | None = None
@@ -304,3 +309,83 @@ class ServiceScanResult(ServiceModel):
         if value in {ScanStatus.QUEUED, ScanStatus.RUNNING, ScanStatus.CANCELED}:
             raise ValueError("worker result must use a terminal scan status")
         return value
+
+
+class ProjectCreateRequest(ServiceModel):
+    name: str = Field(min_length=1, max_length=256)
+    repository_url: str = Field(min_length=1, max_length=4096)
+    branch: str = Field(min_length=1, max_length=256)
+    include: list[str] = Field(default_factory=list, max_length=256)
+    exclude: list[str] = Field(default_factory=list, max_length=256)
+    background: str | None = Field(default=None, max_length=16_384)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        candidate = value.strip()
+        if not candidate or any(ord(char) < 32 for char in candidate):
+            raise ValueError("project name must be non-empty and contain no control characters")
+        return candidate
+
+    @field_validator("repository_url")
+    @classmethod
+    def validate_url(cls, value: str) -> str:
+        return ScanCreateRequest.validate_repository_url(value)
+
+    @field_validator("include", "exclude")
+    @classmethod
+    def validate_patterns(cls, values: list[str], info: ValidationInfo) -> list[str]:
+        return ScanCreateRequest.validate_patterns(values, info)
+
+    @field_validator("background")
+    @classmethod
+    def validate_background(cls, value: str | None) -> str | None:
+        return ScanCreateRequest.validate_background(value)
+
+    @field_validator("branch")
+    @classmethod
+    def validate_branch(cls, value: str) -> str:
+        candidate = _safe_ref(value)
+        assert candidate is not None
+        if candidate.startswith("refs/") or candidate == "HEAD":
+            raise ValueError("branch must name a branch, not a revision")
+        return candidate
+
+
+class ProjectUpdateRequest(ServiceModel):
+    name: str = Field(min_length=1, max_length=256)
+    include: list[str] = Field(default_factory=list, max_length=256)
+    exclude: list[str] = Field(default_factory=list, max_length=256)
+    background: str | None = Field(default=None, max_length=16_384)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        return ProjectCreateRequest.validate_name(value)
+
+    @field_validator("include", "exclude")
+    @classmethod
+    def validate_patterns(cls, values: list[str], info: ValidationInfo) -> list[str]:
+        return ScanCreateRequest.validate_patterns(values, info)
+
+    @field_validator("background")
+    @classmethod
+    def validate_background(cls, value: str | None) -> str | None:
+        return ScanCreateRequest.validate_background(value)
+
+
+class ProjectScanRequest(ServiceModel):
+    mode: str = Field(default="auto", pattern="^(auto|full)$")
+    source_disclosure_confirmed: bool = False
+
+
+class VulnerabilityStatus(StrEnum):
+    OPEN = "open"
+    IN_PROGRESS = "in_progress"
+    FIXED = "fixed"
+    FALSE_POSITIVE = "false_positive"
+    ACCEPTED_RISK = "accepted_risk"
+
+
+class VulnerabilityUpdateRequest(ServiceModel):
+    status: VulnerabilityStatus

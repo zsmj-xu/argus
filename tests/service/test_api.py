@@ -5,6 +5,34 @@ from argus.service.models import FindingCreate, ScanStatus, ServiceScanResult
 from argus.service.store import ScanStore
 
 
+def submit_project_scan(client, payload, headers):
+    project = client.post(
+        "/v1/projects",
+        headers=headers,
+        json={
+            "name": "Test project",
+            "repository_url": payload["repository_url"],
+            "branch": payload.get("ref") or "main",
+            "background": payload.get("background"),
+        },
+    )
+    if project.status_code == 409:
+        projects = client.get("/v1/projects", headers=headers).json()["items"]
+        project_id = next(
+            p["id"]
+            for p in projects
+            if p["repository_url"].removesuffix(".git") == payload["repository_url"].removesuffix(".git")
+        )
+    else:
+        assert project.status_code == 201
+        project_id = project.json()["id"]
+    return client.post(
+        f"/v1/projects/{project_id}/scans",
+        headers=headers,
+        json={"source_disclosure_confirmed": payload.get("source_disclosure_confirmed", False)},
+    )
+
+
 def test_api_serves_built_frontend(monkeypatch, tmp_path) -> None:
     dist = tmp_path / "dist"
     assets = dist / "assets"
@@ -39,8 +67,8 @@ def test_api_auth_idempotency_and_reports(monkeypatch) -> None:
         "background": "Review authentication and authorization.",
         "source_disclosure_confirmed": True,
     }
-    created = client.post("/v1/scans", json=payload, headers=headers)
-    repeated = client.post("/v1/scans", json=payload, headers=headers)
+    created = submit_project_scan(client, payload, headers)
+    repeated = submit_project_scan(client, payload, headers)
     assert created.status_code == 202
     assert repeated.status_code == 200
     scan_id = created.json()["id"]
@@ -104,25 +132,19 @@ def test_api_cancel_retry_and_idempotency_conflict(monkeypatch) -> None:
     client = TestClient(create_app(store))
     headers = {"Authorization": "Bearer test-key", "Idempotency-Key": "same-key"}
 
-    created = client.post(
-        "/v1/scans",
-        json={"repository_url": "https://example.com/a.git", "source_disclosure_confirmed": True},
-        headers=headers,
+    created = submit_project_scan(
+        client, {"repository_url": "https://example.com/a.git", "source_disclosure_confirmed": True}, headers
     )
     scan_id = created.json()["id"]
     assert client.post(f"/v1/scans/{scan_id}/cancel", headers=headers).json()["status"] == "canceled"
     assert client.post(f"/v1/scans/{scan_id}/retry", headers=headers).json()["status"] == "queued"
-    conflict = client.post(
-        "/v1/scans",
-        json={"repository_url": "https://example.com/b.git", "source_disclosure_confirmed": True},
-        headers=headers,
+    conflict = submit_project_scan(
+        client, {"repository_url": "https://example.com/b.git", "source_disclosure_confirmed": True}, headers
     )
     assert conflict.status_code == 409
 
-    rejected = client.post(
-        "/v1/scans",
-        json={"repository_url": "https://example.com/no-consent.git"},
-        headers={"Authorization": "Bearer test-key"},
+    rejected = submit_project_scan(
+        client, {"repository_url": "https://example.com/no-consent.git"}, {"Authorization": "Bearer test-key"}
     )
     assert rejected.status_code == 400
 
@@ -137,17 +159,13 @@ def test_api_reports_full_queue(monkeypatch) -> None:
     client = TestClient(create_app(store))
     headers = {"Authorization": "Bearer test-key"}
     assert (
-        client.post(
-            "/v1/scans",
-            json={"repository_url": "https://example.com/a.git", "source_disclosure_confirmed": True},
-            headers=headers,
+        submit_project_scan(
+            client, {"repository_url": "https://example.com/a.git", "source_disclosure_confirmed": True}, headers
         ).status_code
         == 202
     )
-    response = client.post(
-        "/v1/scans",
-        json={"repository_url": "https://example.com/b.git", "source_disclosure_confirmed": True},
-        headers=headers,
+    response = submit_project_scan(
+        client, {"repository_url": "https://example.com/b.git", "source_disclosure_confirmed": True}, headers
     )
     assert response.status_code == 429
 

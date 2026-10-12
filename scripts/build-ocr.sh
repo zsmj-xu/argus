@@ -2,8 +2,8 @@
 set -eu
 
 : "${OCR_SOURCE_URL:=https://github.com/zsmj-xu/open-code-review.git}"
-: "${OCR_VERSION:=codex/argus-aligned-refactor}"
-: "${OCR_COMMIT:=072808b6b0b12a1408b31889539c03878eff0f61}"
+: "${OCR_VERSION:=codex/usage-events}"
+: "${OCR_COMMIT:=16f10f1efeb69d6f3cd2391511e225ad54809e2e}"
 : "${OCR_OUTPUT:=/out/ocr}"
 
 work_dir="$(mktemp -d)"

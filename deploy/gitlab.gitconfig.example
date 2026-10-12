@@ -1,0 +1,3 @@
+[credential "https://gitlab.example.com"]
+    username = replace-with-deploy-token-username
+    helper = /run/argus/gitlab-credential-helper.sh gitlab.example.com

@@ -27,6 +27,25 @@ def _valid_output() -> str:
     return json.dumps({"status": "success", "comments": []})
 
 
+def test_large_final_result_exceeds_diagnostic_limit_without_truncation(tmp_path: Path) -> None:
+    # Match the WebGoat failure: ~27 MB final stdout, short stderr, exit 0.
+    size = 27 * 1024 * 1024
+    script = _fake_ocr(
+        tmp_path,
+        f"""
+        import sys
+        sys.stdout.write(" " * {size})
+        sys.stdout.write({json.dumps(_valid_output())})
+        sys.stderr.write("diagnostic")
+        """,
+    )
+    result = OpenCodeReviewRunner(script).run(tmp_path, OCRScanConfig())
+    assert result.status is OCRStatus.COMPLETE
+    assert result.error is None
+    assert len(result.stdout) == size + len(_valid_output())
+    assert result.stderr == "diagnostic"
+
+
 @pytest.mark.parametrize("with_cancel_check", [False, True])
 def test_real_subprocess_drains_large_unnewline_bursts_from_both_streams(
     tmp_path: Path, with_cancel_check: bool
@@ -99,6 +118,7 @@ def test_output_overflow_is_bounded_and_kills_the_process_group(
 ) -> None:
     limit = 64 * 1024
     monkeypatch.setattr(ocr_adapter, "_MAX_PROCESS_OUTPUT_BYTES", limit)
+    monkeypatch.setattr(ocr_adapter, "_MAX_PROCESS_RESULT_BYTES", limit)
     script = _fake_ocr(
         tmp_path,
         """
@@ -165,7 +185,8 @@ def test_timeout_and_cancel_kill_descendants(tmp_path: Path, mode: str) -> None:
     if mode == "timeout":
         config = OCRScanConfig(process_timeout_seconds=0.2)
     else:
-        config = OCRScanConfig(process_timeout_seconds=10)
+        config = OCRScanConfig()
+        assert config.process_timeout_seconds is None
         kwargs["cancel_check"] = lambda: time.monotonic() - started >= 0.2
 
     result = OpenCodeReviewRunner(script).run(tmp_path, config, **kwargs)
@@ -348,3 +369,41 @@ def test_structured_event_queue_overflow_is_dropped_without_failing_json(
     activity = [event for event in forwarded if event["type"] == "ocr.output_activity"]
     assert activity
     assert any(event["data"]["structured_events_dropped"] > 0 for event in activity)
+
+
+def test_usage_event_survives_cancellation_without_terminal_json(tmp_path: Path):
+    frame = json.dumps(
+        {
+            "version": 1,
+            "type": "usage.updated",
+            "data": {
+                "input_tokens": 100,
+                "output_tokens": 20,
+                "total_tokens": 120,
+                "cache_read_tokens": 50,
+                "cache_write_tokens": 0,
+                "requests": 1,
+                "missing_usage_requests": 0,
+                "prompt": "DO_NOT_FORWARD",
+            },
+        }
+    )
+    script = _fake_ocr(
+        tmp_path,
+        f"""
+        import os, time
+        os.write(int(os.environ["ARGUS_OCR_EVENTS_FD"]), {frame.encode()!r} + b"\\n")
+        time.sleep(30)
+    """,
+    )
+    events = []
+    result = OpenCodeReviewRunner(script, structured_event_protocol=True).run(
+        tmp_path,
+        OCRScanConfig(),
+        event_callback=events.append,
+        cancel_check=lambda: any(e["type"] == "usage.updated" for e in events),
+    )
+    assert result.canceled
+    usage = next(e["data"] for e in events if e["type"] == "usage.updated")
+    assert usage["total_tokens"] == 120
+    assert "prompt" not in usage

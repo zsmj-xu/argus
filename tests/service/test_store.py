@@ -74,6 +74,55 @@ def test_store_claim_lease_commit_finish_and_persistence(tmp_path) -> None:
     assert sqlite3.connect(database).execute("SELECT COUNT(*) FROM scans").fetchone()[0] == 1
 
 
+def test_failed_finish_preserves_observed_event_coverage() -> None:
+    store = ScanStore(":memory:")
+    store.create_scan(request())
+    claimed = store.claim_next("worker-a")
+    assert claimed is not None
+
+    store.append_event(
+        claimed.id,
+        "worker-a",
+        {
+            "source": "ocr",
+            "type": "scan.inventory",
+            "stage": "ocr_running",
+            "level": "info",
+            "code": "scan_inventory",
+            "data": {"files_total": 4, "reviewed_files": 0, "failed_files": 0, "skipped_files": 0},
+        },
+        lease_token=claimed.lease_token or "",
+    )
+    for path in ("a.py", "b.py"):
+        store.append_event(
+            claimed.id,
+            "worker-a",
+            {
+                "source": "ocr",
+                "type": "file.completed",
+                "stage": "ocr_running",
+                "level": "info",
+                "code": "file_completed",
+                "data": {"path": path, "total": 4},
+            },
+            lease_token=claimed.lease_token or "",
+        )
+
+    finished = store.finish(
+        claimed.id,
+        "worker-a",
+        ServiceScanResult(status=ScanStatus.FAILED, error="ocr_invalid_output"),
+        lease_token=claimed.lease_token,
+    )
+
+    assert finished.status is ScanStatus.FAILED
+    assert finished.progress.total_files == 4
+    assert finished.progress.reviewed_files == 2
+    assert finished.observation.coverage.total == 4
+    assert finished.observation.coverage.reviewed == 2
+    assert finished.observation.coverage.percent == 50
+
+
 def test_store_cancel_retry_and_expired_lease_recovery() -> None:
     store = ScanStore(":memory:")
     queued, _ = store.create_scan(request())

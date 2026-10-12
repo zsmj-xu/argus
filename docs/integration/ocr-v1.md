@@ -5,16 +5,29 @@ OpenCodeReview engine. Argus owns Git acquisition, queueing, persistence,
 reports, and sanitized observability. OpenCodeReview is the only source-review
 engine.
 
+Project mode invokes `ocr scan` for the first/latest full snapshot and
+`ocr review --from <base> --to <target>` for cumulative incremental review.
+Review requires `ocr.run-manifest/v1`, exact resolved endpoints, and disjoint,
+accounted coverage sets. Service-generated filters enforce project scope;
+OCR's native include patterns alone are additive, not exclusive.
+Both commands explicitly set `--max-tokens-budget 0` (unlimited).
+Per-attempt native sessions remain temporary; resume is not exposed.
+
 ## Baseline
 
 - OCR source: `https://github.com/zsmj-xu/open-code-review.git`
-- OCR ref: `codex/argus-aligned-refactor`
-- OCR commit: `072808b6b0b12a1408b31889539c03878eff0f61`
+- OCR ref: `codex/usage-events`
+- OCR commit: `16f10f1efeb69d6f3cd2391511e225ad54809e2e`
 - OCR result schema: `ocr.scan-result/v1`
-- OCR event protocol: opt-in with `ARGUS_OCR_EVENT_PROTOCOL=1` and an inherited
+- OCR event protocol: service-enabled by default with `ARGUS_OCR_EVENT_PROTOCOL=1` and an inherited
   event FD
 - Production API and Worker remain separate processes sharing
   `ARGUS_DATA_DIR`
+
+This commit is published to the configured fork on `codex/usage-events`.
+The local API/Worker use the native binary built from that exact commit.
+Dockerfile, Compose and the build script share the pin and can fetch it from
+the configured remote. No Docker image publication is implied by a Git push.
 
 The build pin is repeated in `Dockerfile`, `docker-compose.yml`, and
 `scripts/build-ocr.sh`. The Argus runtime metadata uses the same commit as its

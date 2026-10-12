@@ -1,0 +1,38 @@
+[
+  {
+    "name": "VAmPI",
+    "repository_url": "https://github.com/erev0s/VAmPI.git",
+    "branch": "master",
+    "project_id": "7bf3524800ab47ef94be498fefcae4a3",
+    "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+    "include": [],
+    "exclude": [],
+    "background": null,
+    "status": "completed",
+    "commit_sha": "f16052dce83f05847133ec98f01c5193a41de7d8"
+  },
+  {
+    "name": "NodeGoat",
+    "repository_url": "https://github.com/OWASP/NodeGoat.git",
+    "branch": "master",
+    "project_id": "d3814a88f91844fb8115a3e6137bc2dd",
+    "scan_id": "5af058937a134c6791dfd94a95b21a6a",
+    "include": [],
+    "exclude": [],
+    "background": null,
+    "status": "completed",
+    "commit_sha": "c5cb68a7084e4ae7dcc60e6a98768720a81841e8"
+  },
+  {
+    "name": "WebGoat",
+    "repository_url": "https://github.com/WebGoat/WebGoat.git",
+    "branch": "main",
+    "project_id": "19eb7c34c6f340cc888638042af9a201",
+    "scan_id": "73d27937e980444e8d32d01f65d575df",
+    "include": [],
+    "exclude": [],
+    "background": null,
+    "status": "failed",
+    "commit_sha": "044948d057b249735be2bfc14eccc9e3dc2eac34"
+  }
+]

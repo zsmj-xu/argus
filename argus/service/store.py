@@ -41,9 +41,10 @@ from .observability import (
     sanitize_repository_url,
     structured_event_update,
 )
+from .projects import initialize_projects, reconcile_project
 
 
-_SCHEMA_VERSION = 2
+_SCHEMA_VERSION = 3
 _EVENT_CLEANUP_BATCH = 1_000
 _EVENT_EXPORT_LIMIT = 2_000
 
@@ -84,6 +85,9 @@ class WorkerScan:
         attempt: int,
         cancel_requested: bool,
         lease_token: str | None = None,
+        project_id: str | None = None,
+        scan_type: str = "full",
+        base_commit: str | None = None,
     ) -> None:
         self.id = id
         self.repository_url = repository_url
@@ -95,6 +99,9 @@ class WorkerScan:
         self.attempt = attempt
         self.cancel_requested = cancel_requested
         self.lease_token = lease_token
+        self.project_id = project_id
+        self.scan_type = scan_type
+        self.base_commit = base_commit
 
 
 def _now() -> datetime:
@@ -266,6 +273,9 @@ class ScanStore:
 
                 columns = {row[1] for row in db.execute("PRAGMA table_info(scans)").fetchall()}
                 additive_columns = {
+                    "project_id": "TEXT",
+                    "scan_type": "TEXT NOT NULL DEFAULT 'full'",
+                    "base_commit": "TEXT",
                     "lease_token": "TEXT",
                     "phase_started_at": "TEXT",
                     "process_deadline_at": "TEXT",
@@ -287,6 +297,11 @@ class ScanStore:
                 for name, definition in additive_columns.items():
                     if name not in columns:
                         db.execute(f"ALTER TABLE scans ADD COLUMN {name} {definition}")
+                initialize_projects(db)
+                db.execute(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_project_active_scan ON scans(project_id) "
+                    "WHERE project_id IS NOT NULL AND status IN ('queued', 'running')"
+                )
 
                 db.execute(
                     """
@@ -378,13 +393,37 @@ class ScanStore:
                 if active >= self.max_queue:
                     db.rollback()
                     raise QueueFull("scan queue is full")
+                scan_type = "full"
+                base_commit = None
+                if request.project_id:
+                    project = db.execute("SELECT * FROM projects WHERE id = ?", (request.project_id,)).fetchone()
+                    if project is None:
+                        raise ScanNotFound(request.project_id)
+                    if db.execute(
+                        "SELECT 1 FROM scans WHERE project_id = ? AND status IN ('queued', 'running')",
+                        (request.project_id,),
+                    ).fetchone():
+                        raise ScanStateError("this project already has an active scan")
+                    request = request.model_copy(
+                        update={
+                            "repository_url": project["repository_url"],
+                            "ref": project["branch"],
+                            "include": json.loads(project["include_json"]),
+                            "exclude": json.loads(project["exclude_json"]),
+                            "background": project["background"],
+                        }
+                    )
+                    if request.mode == "auto" and project["baseline_commit"]:
+                        scan_type = "incremental"
+                        base_commit = project["baseline_commit"]
                 db.execute(
                     """
                     INSERT INTO scans (
                         id, idempotency_key, request_hash, repository_url, requested_ref,
                         include_json, exclude_json, background, status, phase,
-                        coverage_json, metadata_json, phase_started_at, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        coverage_json, metadata_json, phase_started_at, created_at, updated_at,
+                        project_id, scan_type, base_commit
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         scan_id,
@@ -402,6 +441,9 @@ class ScanStore:
                         now,
                         now,
                         now,
+                        request.project_id,
+                        scan_type,
+                        base_commit,
                     ),
                 )
                 committed_events.append(
@@ -946,6 +988,7 @@ class ScanStore:
         if update is not None:
             self._apply_structured_update_db(db, scan_id, update, timestamp, event)
         self._record_process_deadline_db(db, scan_id, event, timestamp)
+        self._record_usage_db(db, scan_id, event)
         level = str(event.get("level") or "").lower()
         event_type = str(event.get("type") or "").lower()
         if level in {"warning", "error", "critical"} or "error" in event_type or "failed" in event_type:
@@ -971,6 +1014,102 @@ class ScanStore:
                         scan_id,
                     ),
                 )
+
+    def _record_usage_db(self, db: sqlite3.Connection, scan_id: str, event: Mapping[str, Any]) -> None:
+        if event.get("source") != "ocr" or event.get("type") != "usage.updated":
+            return
+        data = event.get("data")
+        keys = (
+            "input_tokens",
+            "output_tokens",
+            "total_tokens",
+            "cache_read_tokens",
+            "cache_write_tokens",
+            "requests",
+            "missing_usage_requests",
+        )
+        if not isinstance(data, Mapping) or not all(
+            isinstance(data.get(key), int) and not isinstance(data.get(key), bool) and 0 <= data[key] <= 2**53 - 1
+            for key in keys
+        ):
+            return
+        if (
+            data["total_tokens"] != data["input_tokens"] + data["output_tokens"]
+            or data["missing_usage_requests"] > data["requests"]
+        ):
+            return
+        row = db.execute("SELECT metadata_json, attempt FROM scans WHERE id = ?", (scan_id,)).fetchone()
+        if row is None:
+            return
+        metadata = self._json_object(row["metadata_json"])
+        attempts = self._json_object(metadata.get("ocr_usage_attempts", {}))
+        previous = attempts.get(str(row["attempt"]), {})
+        if isinstance(previous, dict):
+            if any(data[key] < previous.get(key, 0) for key in keys):
+                return
+        usage = {
+            **{key: data[key] for key in keys},
+            "state": "partial",
+            "source": "events",
+            "attempt": row["attempt"],
+        }
+        self._merge_usage(metadata, attempts, row["attempt"], usage)
+        db.execute("UPDATE scans SET metadata_json = ? WHERE id = ?", (json.dumps(metadata), scan_id))
+
+    def _terminal_metadata(self, row: sqlite3.Row, result: ServiceScanResult) -> dict[str, Any]:
+        metadata = dict(result.metadata)
+        attempts = self._json_object(self._json_object(row["metadata_json"]).get("ocr_usage_attempts", {}))
+        usage = dict(attempts.get(str(row["attempt"]), {}))
+        summary = metadata.get("ocr_summary")
+        if (
+            isinstance(summary, dict)
+            and metadata.get("ocr_scan_schema_version") is not None
+            and all(
+                isinstance(summary.get(key), int)
+                and not isinstance(summary.get(key), bool)
+                and summary[key] >= usage.get(key, 0)
+                for key in ("input_tokens", "output_tokens", "total_tokens")
+            )
+        ):
+            usage.update(
+                {
+                    key: summary[key]
+                    for key in ("input_tokens", "output_tokens", "total_tokens", "cache_read_tokens")
+                    if key in summary
+                }
+            )
+            usage.update(state="final_reported", source="summary", attempt=row["attempt"])
+        if usage:
+            self._merge_usage(metadata, attempts, row["attempt"], usage)
+        elif attempts:
+            self._merge_usage(metadata, attempts, row["attempt"], {"state": "partial", "source": "unknown"})
+        return metadata
+
+    @staticmethod
+    def _merge_usage(metadata: dict[str, Any], attempts: dict[str, Any], attempt: int, usage: dict[str, Any]) -> None:
+        attempts[str(attempt)] = usage
+        metadata["ocr_usage_attempts"] = attempts
+        counters = (
+            "input_tokens",
+            "output_tokens",
+            "total_tokens",
+            "cache_read_tokens",
+            "cache_write_tokens",
+            "requests",
+            "missing_usage_requests",
+        )
+        metadata["ocr_usage"] = {
+            **{
+                key: sum(item.get(key, 0) for item in attempts.values())
+                for key in counters
+                if any(key in item for item in attempts.values())
+            },
+            "state": "final_reported"
+            if all(item.get("state") == "final_reported" for item in attempts.values())
+            else "partial",
+            "source": "reported_usage",
+            "attempts_recorded": len(attempts),
+        }
 
     @staticmethod
     def _record_process_deadline_db(
@@ -1460,6 +1599,11 @@ class ScanStore:
                 row = db.execute("SELECT * FROM scans WHERE id = ?", (scan_id,)).fetchone()
                 self._require_owned_row(row, worker_id, lease_token)
                 assert row is not None
+                terminal_metadata = self._terminal_metadata(row, result)
+                db.execute(
+                    "UPDATE scans SET metadata_json = ? WHERE id = ?",
+                    (json.dumps(terminal_metadata, ensure_ascii=False), scan_id),
+                )
                 if row["cancel_requested"]:
                     db.execute(
                         """
@@ -1506,6 +1650,44 @@ class ScanStore:
                         if result.status in {ScanStatus.COMPLETED, ScanStatus.PARTIAL, ScanStatus.SKIPPED}
                         else 0,
                     )
+                    # Preserve authoritative event coverage when OCR produced
+                    # a bounded partial/failed process result but its final
+                    # JSON could not be normalized.  Otherwise the terminal
+                    # write would replace useful live coverage (for example
+                    # 27/206 files) with an uninformative 0/0 snapshot.
+                    if result.status is ScanStatus.FAILED and result.total_files == 0:
+                        observed = self._json_object(row["coverage_observation_json"])
+                        observed_total = observed.get("total")
+                        if (
+                            isinstance(observed_total, int)
+                            and not isinstance(observed_total, bool)
+                            and observed_total >= 0
+                        ):
+                            observed_reviewed = observed.get("reviewed", 0)
+                            observed_failed = observed.get("failed", 0)
+                            observed_skipped = observed.get("skipped", 0)
+                            if all(
+                                isinstance(value, int) and not isinstance(value, bool) and value >= 0
+                                for value in (observed_reviewed, observed_failed, observed_skipped)
+                            ):
+                                progress = ScanProgress(
+                                    total_files=observed_total,
+                                    reviewed_files=observed_reviewed,
+                                    failed_files=observed_failed,
+                                    skipped_files=observed_skipped,
+                                    percent=(
+                                        min(
+                                            100,
+                                            round(
+                                                (observed_reviewed + observed_failed + observed_skipped)
+                                                * 100
+                                                / observed_total
+                                            ),
+                                        )
+                                        if observed_total
+                                        else 0
+                                    ),
+                                )
                     query = """
                         UPDATE scans
                         SET status = ?, phase = ?, phase_started_at = ?,
@@ -1525,7 +1707,7 @@ class ScanStore:
                         json.dumps(progress.model_dump(mode="json"), ensure_ascii=False),
                         json.dumps(self._observation_coverage(progress), ensure_ascii=False),
                         now,
-                        json.dumps(result.metadata, ensure_ascii=False, default=str),
+                        json.dumps(terminal_metadata, ensure_ascii=False, default=str),
                         len(result.findings),
                         _safe_error(result.error),
                         now,
@@ -1540,6 +1722,7 @@ class ScanStore:
                     cursor = db.execute(query, parameters)
                     if cursor.rowcount != 1:
                         raise LeaseLost(scan_id)
+                    reconcile_project(db, row, result, now or "")
                     terminal_level = {
                         ScanStatus.COMPLETED: "info",
                         ScanStatus.PARTIAL: "warning",
@@ -1680,6 +1863,27 @@ class ScanStore:
                 if row is None:
                     db.rollback()
                     raise ScanNotFound(scan_id)
+                if row["project_id"]:
+                    project = db.execute("SELECT * FROM projects WHERE id = ?", (row["project_id"],)).fetchone()
+                    assert project is not None
+                    if db.execute(
+                        "SELECT 1 FROM scans WHERE project_id = ? AND id != ? AND status IN ('queued', 'running')",
+                        (row["project_id"], scan_id),
+                    ).fetchone():
+                        raise ScanStateError("this project already has an active scan")
+                    baseline_changed = (
+                        row["scan_type"] == "incremental" and project["baseline_commit"] != row["base_commit"]
+                    )
+                    newer = db.execute(
+                        "SELECT 1 FROM scans WHERE id = ? AND rowid > (SELECT rowid FROM scans WHERE id = ?)",
+                        (project["baseline_scan_id"], scan_id),
+                    ).fetchone()
+                    if (
+                        baseline_changed
+                        or newer
+                        or any(project[key] != row[key] for key in ("include_json", "exclude_json", "background"))
+                    ):
+                        raise ScanStateError("project baseline or configuration changed; start a new scan")
                 current = ScanStatus(row["status"])
                 if current not in {
                     ScanStatus.PARTIAL,
@@ -1828,6 +2032,9 @@ class ScanStore:
             metadata = {}
         return ScanResponse(
             id=row["id"],
+            project_id=row["project_id"],
+            scan_type=row["scan_type"],
+            base_commit=row["base_commit"],
             repository_url=row["repository_url"],
             ref=row["requested_ref"],
             commit_sha=row["commit_sha"],
@@ -1915,6 +2122,9 @@ class ScanStore:
     def _worker_from_row(row: sqlite3.Row) -> WorkerScan:
         return WorkerScan(
             id=row["id"],
+            project_id=row["project_id"],
+            scan_type=row["scan_type"],
+            base_commit=row["base_commit"],
             repository_url=row["repository_url"],
             ref=row["requested_ref"],
             commit_sha=row["commit_sha"],

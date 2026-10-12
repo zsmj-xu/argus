@@ -1,7 +1,7 @@
 # White-box service architecture
 
 ```text
-Git URL + ref + API Key + disclosure confirmation
+Project (Git URL + branch) + API Key + disclosure confirmation
           |
           v
        API :8000  ---- shared service data ----  worker
@@ -9,18 +9,23 @@ Git URL + ref + API Key + disclosure confirmation
           +---------- Markdown report <----------+
                                |
                        fixed OCR adapter
-                    /usr/local/bin/ocr (fixed main commit)
+                  first: scan / next: review A -> B
+                    /usr/local/bin/ocr (pinned commit)
 ```
 
 ## 构建与运行
 
-Dockerfile 有三个阶段：Go builder 从 `zsmj-xu/open-code-review` 的固定 commit
-`072808b6b0b12a1408b31889539c03878eff0f61` 构建 OCR；Python builder 安装 Argus 与 Uvicorn；runtime
+Dockerfile 有四个阶段：Go builder 从 `zsmj-xu/open-code-review` 的固定 commit
+`16f10f1efeb69d6f3cd2391511e225ad54809e2e` 构建 OCR；前端 builder 编译 React；Python builder 安装 Argus 与 Uvicorn；runtime
 只保留 Python 服务、Git、证书和 OCR 可执行文件。运行时以非 root 用户启动。
 
 Compose 将 API 和 worker 分开，二者共享新的 `argus-service-data` named volume。API 通过
 `argus.service.app:create_app` 工厂启动；worker 调用 `argus.service.worker:main`。
 `OCR_BINARY` 是 adapter 的唯一可执行文件配置点。
+
+SQLite 保存 projects、scans、单次 findings 和去重 vulnerabilities。项目身份为仓库＋分支，人工漏洞状态独立于扫描结果。
+成功扫描以事务更新漏洞和基线；失败、取消或部分完成不推进基线。历史分叉必须重新全仓扫描。
+Worker 获取跨进程执行锁，Git/OCR 子进程继承锁；只有没有任务使用时才清理孤儿 checkout。源码和 OCR session 不长期保存。
 
 ## 信任与安全边界
 
@@ -34,6 +39,7 @@ Key 不进入源码、命令行参数或报告。
 
 ## 输出合同
 
-报告使用 Markdown，至少保留审查范围、Git ref、覆盖/延后原因、每个结论的文件和行号
+全仓采用 `ocr.scan-result/v1`，增量采用 `ocr.run-manifest/v1`，校验输入 commit 和覆盖分区。
+报告支持 Markdown、JSON、SARIF，保留审查范围、分支、起止 commit、覆盖/延后原因、每个结论的文件和行号
 证据、风险说明、修复建议及“未执行目标代码/动态验证”的限制声明。部分覆盖必须明确标记，
 不能伪装成完整扫描。

@@ -70,10 +70,13 @@ class OCRScanConfig:
     model: str | None = None
     token_budget: int | None = None
     timeout_minutes: int | None = None
-    process_timeout_seconds: float | None = 1800.0
+    process_timeout_seconds: float | None = None
     no_plan: bool = False
     no_dedup: bool = False
     no_summary: bool = False
+    base_commit: str | None = None
+    target_commit: str | None = None
+    rule_file: str | None = None
 
     @property
     def path(self) -> tuple[str, ...]:
@@ -102,9 +105,14 @@ class OCRScanConfig:
         _validate_optional_text(self.provider, "provider")
         _validate_optional_text(self.model, "model")
         if self.token_budget is not None and (
-            isinstance(self.token_budget, bool) or not isinstance(self.token_budget, int) or self.token_budget <= 0
+            isinstance(self.token_budget, bool) or not isinstance(self.token_budget, int) or self.token_budget < 0
         ):
-            raise ValueError("token_budget must be a positive integer")
+            raise ValueError("token_budget must be a non-negative integer")
+        for commit in (self.base_commit, self.target_commit):
+            if commit is not None and re.fullmatch(r"[0-9a-fA-F]{40,64}", commit) is None:
+                raise ValueError("review commits must be resolved commit hashes")
+        if bool(self.base_commit) != bool(self.target_commit):
+            raise ValueError("review requires both base and target commits")
         if self.timeout_minutes is not None and (
             isinstance(self.timeout_minutes, bool)
             or not isinstance(self.timeout_minutes, int)
@@ -197,6 +205,7 @@ class _ProcessCapture:
     """
 
     limit: int
+    stdout_limit: int | None = None
     stdout: bytearray = field(default_factory=bytearray)
     stderr: bytearray = field(default_factory=bytearray)
     stdout_bytes: int = 0
@@ -217,11 +226,13 @@ class _ProcessCapture:
                 previous = self.stdout_bytes
                 self.stdout_bytes += len(chunk)
                 buffer = self.stdout
+                limit = self.stdout_limit if self.stdout_limit is not None else self.limit
             else:
                 previous = self.stderr_bytes
                 self.stderr_bytes += len(chunk)
                 buffer = self.stderr
-            remaining = max(self.limit - previous, 0)
+                limit = self.limit
+            remaining = max(limit - previous, 0)
             if remaining:
                 buffer.extend(chunk[:remaining])
             if len(chunk) > remaining:
@@ -293,6 +304,7 @@ _MAX_MESSAGE_TEXT = 2_000
 _MAX_WARNING_TYPE_TEXT = 128
 _MAX_WARNING_PATH_TEXT = 512
 _MAX_PROCESS_OUTPUT_BYTES = 8 * 1024 * 1024
+_MAX_PROCESS_RESULT_BYTES = 64 * 1024 * 1024
 _MAX_STRUCTURED_EVENT_LINE_BYTES = 8 * 1024
 _MAX_STRUCTURED_EVENT_COUNT = 10_000
 _MAX_STRUCTURED_EVENT_DATA_FIELDS = 32
@@ -312,6 +324,7 @@ _SAFE_EVENT_LABEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@_+\-]{0,127}$")
 _SAFE_EVENT_TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$")
 
 _STRUCTURED_EVENT_METADATA: dict[str, tuple[str, str, str]] = {
+    "usage.updated": ("info", "usage_updated", "OCR reported cumulative token usage."),
     "file.started": ("info", "file_started", "OCR reported a file start."),
     "file.completed": ("info", "file_completed", "OCR reported a file completion."),
     "file.failed": ("error", "file_failed", "OCR reported a file failure."),
@@ -327,6 +340,17 @@ _STRUCTURED_EVENT_METADATA: dict[str, tuple[str, str, str]] = {
     "session.started": ("info", "session_started", "OCR reported a session start."),
 }
 _STRUCTURED_EVENT_DATA_FIELDS: dict[str, frozenset[str]] = {
+    "usage.updated": frozenset(
+        {
+            "input_tokens",
+            "output_tokens",
+            "total_tokens",
+            "cache_read_tokens",
+            "cache_write_tokens",
+            "requests",
+            "missing_usage_requests",
+        }
+    ),
     "file.started": frozenset(
         {
             "index",
@@ -591,6 +615,12 @@ def normalize_comment(value: object) -> OCRComment:
     )
 
 
+def _is_location_schema_error(error: OCRSchemaError) -> bool:
+    """Whether a malformed location can be safely omitted from one finding."""
+
+    return str(error).startswith(("start_line ", "end_line "))
+
+
 def _normalize_warning(value: object) -> str | dict[str, str]:
     if isinstance(value, str):
         warning_text = value.strip()
@@ -635,7 +665,7 @@ def _parse_scan_result(document: Mapping[str, Any]) -> OCRScanResult | None:
     """Parse the optional authoritative ``ocr.scan-result/v1`` object."""
 
     if "scan_result" not in document:
-        return None
+        return _parse_review_manifest(document)
     raw_result = document["scan_result"]
     if not isinstance(raw_result, Mapping):
         raise OCRSchemaError("OCR scan_result must be an object")
@@ -667,6 +697,45 @@ def _parse_scan_result(document: Mapping[str, Any]) -> OCRScanResult | None:
     ):
         raise OCRSchemaError("skipped OCR scan_result coverage is inconsistent")
     return OCRScanResult(schema_version=_SCAN_RESULT_SCHEMA, outcome=outcome, coverage=coverage)
+
+
+def _parse_review_manifest(document: Mapping[str, Any]) -> OCRScanResult | None:
+    if "manifest" not in document:
+        return None
+    manifest = document["manifest"]
+    if not isinstance(manifest, Mapping) or manifest.get("schema_version") != "ocr.run-manifest/v1":
+        raise OCRSchemaError("invalid OCR review manifest")
+    if manifest.get("operation") != "review":
+        raise OCRSchemaError("unsupported OCR manifest operation")
+    coverage = manifest.get("coverage")
+    if not isinstance(coverage, Mapping):
+        raise OCRSchemaError("invalid OCR manifest coverage")
+    sets: dict[str, set[str]] = {}
+    for key in ("selected", "completed", "reused", "failed", "waived"):
+        items = coverage.get(key)
+        if not isinstance(items, list) or len(items) > 50_000:
+            raise OCRSchemaError("invalid OCR manifest coverage partition")
+        ids: set[str] = set()
+        for item in items:
+            if not isinstance(item, Mapping) or not isinstance(item.get("item_id"), str) or not item["item_id"]:
+                raise OCRSchemaError("invalid OCR manifest coverage item")
+            if item["item_id"] in ids:
+                raise OCRSchemaError("duplicate OCR manifest coverage item")
+            ids.add(item["item_id"])
+        sets[key] = ids
+    partitions = [sets[key] for key in ("completed", "reused", "failed", "waived")]
+    if set.union(set(), *partitions) != sets["selected"] or sum(map(len, partitions)) != len(sets["selected"]):
+        raise OCRSchemaError("OCR manifest coverage is not accounted")
+    try:
+        outcome = OCRStatus(manifest.get("terminal_state"))
+    except (ValueError, TypeError) as exc:
+        raise OCRSchemaError("invalid OCR manifest terminal state") from exc
+    total = len(sets["selected"])
+    reviewed = len(sets["completed"]) + len(sets["reused"])
+    failed, skipped = len(sets["failed"]), len(sets["waived"])
+    if outcome is OCRStatus.COMPLETE and (manifest.get("run_failure") or failed or skipped or reviewed != total):
+        raise OCRSchemaError("complete OCR manifest has incomplete coverage")
+    return OCRScanResult("ocr.run-manifest/v1", outcome, OCRCoverage(total, reviewed, failed, skipped))
 
 
 def parse_ocr_envelope(
@@ -710,16 +779,44 @@ def parse_ocr_envelope(
         raise OCRSchemaError("OCR comments must be an array")
     if len(raw_comments) > _MAX_COMMENT_COUNT:
         raise OCRSchemaError(f"OCR comments exceed the maximum count of {_MAX_COMMENT_COUNT}")
-    comments = tuple(normalize_comment(item) for item in raw_comments)
-
     raw_warnings = document.get("warnings", [])
     if not isinstance(raw_warnings, list):
         raise OCRSchemaError("OCR warnings must be an array when present")
     if len(raw_warnings) > _MAX_WARNING_COUNT:
         raise OCRSchemaError(f"OCR warnings exceed the maximum count of {_MAX_WARNING_COUNT}")
+
+    comments_list: list[OCRComment] = []
+    invalid_location_count = 0
+    for item in raw_comments:
+        try:
+            comments_list.append(normalize_comment(item))
+        except OCRSchemaError as exc:
+            # A bad model-supplied location must not discard an otherwise
+            # useful finding.  Keep the finding, omit both line endpoints,
+            # and make the loss explicit through the bounded warning channel.
+            # Other schema violations remain fatal because they could change
+            # the meaning or safety of the finding itself.
+            if not _is_location_schema_error(exc) or not isinstance(item, Mapping):
+                raise
+            locationless = dict(item)
+            locationless.pop("start_line", None)
+            locationless.pop("end_line", None)
+            comments_list.append(normalize_comment(locationless))
+            invalid_location_count += 1
+    comments = tuple(comments_list)
+
     warnings_list: list[Any] = []
     for item in raw_warnings:
         warnings_list.append(_normalize_warning(item))
+    if invalid_location_count:
+        location_warning: dict[str, str] = {
+            "type": "invalid_location",
+            "message": "One or more OCR findings had an unusable source location; line numbers were omitted.",
+        }
+        if len(warnings_list) < _MAX_WARNING_COUNT:
+            warnings_list.append(location_warning)
+        else:
+            warnings_list[-1] = location_warning
     warnings = tuple(warnings_list)
     if scan_result is None and status is OCRStatus.COMPLETE and warnings:
         status = OCRStatus.PARTIAL
@@ -763,8 +860,19 @@ class OpenCodeReviewRunner:
         """Build the exact argv passed to OCR, without invoking a shell."""
 
         selected = config or OCRScanConfig()
-        argv = [self.executable, "scan", "--format", "json", "--audience", "agent"]
-        if selected.paths:
+        argv = [
+            self.executable,
+            "review" if selected.base_commit else "scan",
+            "--format",
+            "json",
+            "--audience",
+            "agent",
+        ]
+        if selected.base_commit:
+            argv.extend(["--from", selected.base_commit, "--to", selected.target_commit or "", "--no-filter"])
+        if selected.rule_file:
+            argv.extend(["--rule", selected.rule_file])
+        if selected.paths and not selected.base_commit:
             argv.extend(["--path", ",".join(selected.paths)])
         if selected.excludes:
             argv.extend(["--exclude", ",".join(selected.excludes)])
@@ -778,11 +886,11 @@ class OpenCodeReviewRunner:
             argv.extend(["--max-tokens-budget", str(selected.token_budget)])
         if selected.timeout_minutes is not None:
             argv.extend(["--timeout", str(selected.timeout_minutes)])
-        if selected.no_plan:
+        if selected.no_plan and not selected.base_commit:
             argv.append("--no-plan")
-        if selected.no_dedup:
+        if selected.no_dedup and not selected.base_commit:
             argv.append("--no-dedup")
-        if selected.no_summary:
+        if selected.no_summary and not selected.base_commit:
             argv.append("--no-summary")
         return argv
 
@@ -846,7 +954,7 @@ class OpenCodeReviewRunner:
                 model=model,
                 token_budget=token_budget,
                 timeout_minutes=timeout_minutes,
-                process_timeout_seconds=process_timeout_seconds if process_timeout_seconds is not None else 1800.0,
+                process_timeout_seconds=process_timeout_seconds,
             )
         else:
             selected = config
@@ -919,6 +1027,18 @@ class OpenCodeReviewRunner:
                 if not isinstance(decoded, Mapping):
                     raise OCRSchemaError("OCR JSON output must be a top-level object")
                 envelope = decoded
+                if selected.base_commit:
+                    manifest = decoded.get("manifest")
+                    if not isinstance(manifest, Mapping):
+                        raise OCRSchemaError("review output must contain a manifest")
+                    identity = manifest.get("input")
+                    if (
+                        not isinstance(identity, Mapping)
+                        or identity.get("mode") != "range"
+                        or (identity.get("resolved_base"), identity.get("resolved_head"))
+                        != (selected.base_commit, selected.target_commit)
+                    ):
+                        raise OCRSchemaError("review manifest input differs from requested commits")
                 parsed = parse_ocr_envelope(decoded)
             except json.JSONDecodeError:
                 parse_error = "invalid OCR JSON output"
@@ -1015,7 +1135,7 @@ class OpenCodeReviewRunner:
         event_write_fd: int | None = None
         readers: list[threading.Thread] = []
         event_queue: queue.Queue[dict[str, Any]] | None = None
-        capture = _ProcessCapture(_MAX_PROCESS_OUTPUT_BYTES)
+        capture = _ProcessCapture(_MAX_PROCESS_OUTPUT_BYTES, stdout_limit=_MAX_PROCESS_RESULT_BYTES)
         outcome = _InvocationOutcome()
         cleanup_force = False
         callback_failed = False
@@ -1042,6 +1162,9 @@ class OpenCodeReviewRunner:
                 # structured protocol opt-in.  The ordinary OCR process gets
                 # no inherited diagnostics channel.
                 popen_kwargs["pass_fds"] = (event_write_fd,)
+            lock_fd = os.environ.get("ARGUS_EXECUTION_LOCK_FD")
+            if lock_fd is not None:
+                popen_kwargs["pass_fds"] = (*popen_kwargs.get("pass_fds", ()), int(lock_fd))
             process = subprocess.Popen(self.build_argv(config), **popen_kwargs)
             process_deadline = (
                 time.monotonic() + config.process_timeout_seconds
@@ -1695,7 +1818,7 @@ def _as_text(value: str | bytes | None) -> str:
 
 
 def _limit_process_result(result: _ProcessResult) -> _ProcessResult:
-    stdout, stdout_limited = _limit_text(result.stdout, _MAX_PROCESS_OUTPUT_BYTES)
+    stdout, stdout_limited = _limit_text(result.stdout, _MAX_PROCESS_RESULT_BYTES)
     stderr, stderr_limited = _limit_text(result.stderr, _MAX_PROCESS_OUTPUT_BYTES)
     if not stdout_limited and not stderr_limited:
         return result

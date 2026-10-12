@@ -1,0 +1,117 @@
+{
+  "id": "b7301224fadb400182856b6f20c4a3d7",
+  "project_id": "d3814a88f91844fb8115a3e6137bc2dd",
+  "scan_type": "full",
+  "base_commit": null,
+  "repository_url": "https://github.com/OWASP/NodeGoat.git",
+  "ref": "master",
+  "commit_sha": "c5cb68a7084e4ae7dcc60e6a98768720a81841e8",
+  "include": [
+    "app/routes",
+    "app/data",
+    "server.js",
+    "config"
+  ],
+  "exclude": [],
+  "background": "只审查安全漏洞：说明实际入口、数据流、危险操作和缺失的防护；区分实际执行代码与注释示例。避免纯代码风格、维护性和性能问题。不执行目标代码。",
+  "status": "completed",
+  "phase": "completed",
+  "progress": {
+    "total_files": 23,
+    "reviewed_files": 23,
+    "failed_files": 0,
+    "skipped_files": 0,
+    "percent": 100
+  },
+  "finding_count": 58,
+  "attempt": 1,
+  "idempotency_key": "github-eval-20261010-NodeGoat",
+  "session_id": "9e621f6b-4a7e-47f6-95aa-01235fabcbb4",
+  "metadata": {
+    "ocr_status": "complete",
+    "ocr_scan_schema_version": "ocr.scan-result/v1",
+    "ocr_outcome": "complete",
+    "ocr_coverage": {
+      "files_total": 23,
+      "files_reviewed": 23,
+      "files_failed": 0,
+      "files_skipped": 0
+    },
+    "ocr_summary": {
+      "total_files": 23,
+      "cache_read_tokens": 509184,
+      "output_tokens": 111691,
+      "files_reviewed": 23,
+      "total_tokens": 680612,
+      "elapsed": "4m2s",
+      "failed_files": 0,
+      "comments": 58,
+      "input_tokens": 568921,
+      "skipped_files": 0,
+      "reviewed_files": 23
+    },
+    "ocr_warnings": [],
+    "ocr_warning_count": 0,
+    "coverage_total_known": true,
+    "ocr_llm": {
+      "model": "ds.public.deepseek-v4-pro"
+    },
+    "ocr_exit_code": 0,
+    "ocr_duration_ms": 242574,
+    "ocr_timeout_seconds": 1800.0,
+    "ocr_expected_deadline_seconds": 1800.0,
+    "ocr_expected_deadline_at": "2026-10-10T12:10:09.321609+00:00",
+    "ocr_engine": "opencodereview",
+    "ocr_engine_commit": "072808b6b0b12a1408b31889539c03878eff0f61",
+    "ocr_output_language": "zh-CN",
+    "ocr_capabilities": {
+      "event_callback": true,
+      "pipe_events": true,
+      "event_protocol": true,
+      "file_progress": false,
+      "llm_requests": false
+    },
+    "ocr_event_protocol": true
+  },
+  "error": null,
+  "created_at": "2026-10-10T11:31:41Z",
+  "updated_at": "2026-10-10T11:44:11Z",
+  "started_at": "2026-10-10T11:40:00Z",
+  "finished_at": "2026-10-10T11:44:11Z",
+  "observation": {
+    "stage": "completed",
+    "stage_started_at": "2026-10-10T11:44:11Z",
+    "elapsed_seconds": 750.0,
+    "stage_elapsed_seconds": 0.0,
+    "last_output_at": "2026-10-10T11:44:11Z",
+    "last_progress_at": "2026-10-10T11:44:11Z",
+    "worker_heartbeat_at": "2026-10-10T11:44:11Z",
+    "deadline_at": "2026-10-10T12:10:09Z",
+    "activity_state": "completed",
+    "capabilities": {
+      "file_progress": true,
+      "llm_requests": false,
+      "event_protocol": true
+    },
+    "coverage": {
+      "total": 23,
+      "reviewed": 23,
+      "failed": 0,
+      "skipped": 0,
+      "percent": 100
+    },
+    "report_ready": true,
+    "history_available": true,
+    "error_summary": {
+      "code": null,
+      "message": null,
+      "retryable": null,
+      "suggestion": null,
+      "source": null
+    },
+    "warnings": [],
+    "event_count": 93,
+    "dropped_event_count": 0,
+    "truncated_event_count": 0
+  }
+}

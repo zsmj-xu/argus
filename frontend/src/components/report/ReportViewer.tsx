@@ -23,6 +23,8 @@ export const ReportViewer: React.FC<ReportViewerProps> = ({ scanId, reportReady 
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
+  const activeExtension =
+    activeFormat === 'markdown' ? 'md' : activeFormat === 'sarif' ? 'sarif.json' : 'json';
 
   useEffect(() => {
     if (!reportReady || !scanId) return;
@@ -147,7 +149,7 @@ export const ReportViewer: React.FC<ReportViewerProps> = ({ scanId, reportReady 
             className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium rounded-lg shadow-sm transition-colors"
           >
             <Download className="w-3.5 h-3.5" />
-            <span>{isDownloading ? '下载中...' : `下载 .${activeFormat}`}</span>
+            <span>{isDownloading ? '下载中...' : `下载 .${activeExtension}`}</span>
           </button>
         </div>
       </div>

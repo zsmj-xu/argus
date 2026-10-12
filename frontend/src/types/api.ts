@@ -61,6 +61,9 @@ export interface ScanObservation {
 }
 
 export interface ScanResponse {
+  project_id: string | null;
+  scan_type: 'full' | 'incremental';
+  base_commit: string | null;
   id: string;
   repository_url: string;
   ref: string | null;
@@ -175,4 +178,73 @@ export interface ReadyzResponse {
 
 export interface HealthzResponse {
   status: 'ok';
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  repository_url: string;
+  branch: string;
+  include: string[];
+  exclude: string[];
+  background: string | null;
+  baseline_commit: string | null;
+  baseline_scan_id: string | null;
+  vulnerability_count?: number;
+  active_scan_id?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type VulnerabilityStatus =
+  | 'open'
+  | 'in_progress'
+  | 'fixed'
+  | 'false_positive'
+  | 'accepted_risk';
+
+export interface Vulnerability {
+  id: string;
+  project_id: string;
+  rule_id?: string;
+  title: string;
+  file: string | null;
+  start_line: number | null;
+  end_line: number | null;
+  severity: string;
+  category: string;
+  status: VulnerabilityStatus;
+  message: string;
+  evidence: string;
+  remediation: string;
+  confidence?: string | null;
+  metadata?: Record<string, any>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectListResponse {
+  items: Project[];
+  total: number;
+}
+
+export interface VulnerabilityListResponse {
+  items: Vulnerability[];
+  total: number;
+}
+
+export interface ProjectCreatePayload {
+  name: string;
+  repository_url: string;
+  branch: string;
+  include?: string[];
+  exclude?: string[];
+  background?: string | null;
+}
+
+export interface ProjectUpdatePayload {
+  name: string;
+  include?: string[];
+  exclude?: string[];
+  background?: string | null;
 }

@@ -1,0 +1,93 @@
+{
+  "id": "2ef1360411d245e0a5640e967c98c683",
+  "project_id": "19eb7c34c6f340cc888638042af9a201",
+  "scan_type": "full",
+  "base_commit": null,
+  "repository_url": "https://github.com/WebGoat/WebGoat.git",
+  "ref": "main",
+  "commit_sha": "10cecda8b93f9ea1439188a6257dfb7fc9c954d5",
+  "include": [],
+  "exclude": [],
+  "background": null,
+  "status": "failed",
+  "phase": "failed",
+  "progress": {
+    "total_files": 726,
+    "reviewed_files": 691,
+    "failed_files": 35,
+    "skipped_files": 0,
+    "percent": 100
+  },
+  "finding_count": 0,
+  "attempt": 1,
+  "idempotency_key": "webgoat-full-unlimited-20261012",
+  "session_id": null,
+  "metadata": {
+    "ocr_status": "failed",
+    "ocr_scan_schema_version": null,
+    "ocr_outcome": null,
+    "ocr_coverage": null,
+    "ocr_summary": {},
+    "ocr_warnings": [],
+    "ocr_warning_count": 0,
+    "coverage_total_known": false,
+    "ocr_llm": {},
+    "ocr_exit_code": 0,
+    "ocr_duration_ms": 6389551,
+    "ocr_timeout_seconds": null,
+    "ocr_expected_deadline_seconds": null,
+    "ocr_expected_deadline_at": null,
+    "ocr_engine": "opencodereview",
+    "ocr_engine_commit": "072808b6b0b12a1408b31889539c03878eff0f61",
+    "ocr_output_language": "zh-CN",
+    "ocr_capabilities": {
+      "event_callback": true,
+      "pipe_events": true,
+      "event_protocol": true,
+      "file_progress": false,
+      "llm_requests": false
+    },
+    "ocr_event_protocol": true
+  },
+  "error": "ocr_output_limit",
+  "created_at": "2026-10-11T16:04:59Z",
+  "updated_at": "2026-10-11T17:52:09Z",
+  "started_at": "2026-10-11T16:04:59Z",
+  "finished_at": "2026-10-11T17:52:09Z",
+  "observation": {
+    "stage": "failed",
+    "stage_started_at": "2026-10-11T17:52:09Z",
+    "elapsed_seconds": 6430.0,
+    "stage_elapsed_seconds": 0.0,
+    "last_output_at": "2026-10-11T17:52:09Z",
+    "last_progress_at": "2026-10-11T17:52:09Z",
+    "worker_heartbeat_at": "2026-10-11T17:52:01Z",
+    "deadline_at": null,
+    "activity_state": "failed",
+    "capabilities": {
+      "file_progress": true,
+      "llm_requests": false,
+      "event_protocol": true
+    },
+    "coverage": {
+      "total": 726,
+      "reviewed": 691,
+      "failed": 35,
+      "skipped": 0,
+      "percent": 100
+    },
+    "report_ready": false,
+    "history_available": true,
+    "error_summary": {
+      "code": "process_output_limit",
+      "message": "OpenCodeReview process output reached its configured limit.",
+      "retryable": true,
+      "suggestion": "Review the recent diagnostics and retry the scan if the input or dependency is available.",
+      "source": "ocr"
+    },
+    "warnings": [],
+    "event_count": 2154,
+    "dropped_event_count": 0,
+    "truncated_event_count": 0
+  }
+}

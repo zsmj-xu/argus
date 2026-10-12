@@ -199,3 +199,83 @@ def test_existing_database_migration_is_concurrent_and_preserves_legacy(tmp_path
     with ThreadPoolExecutor(max_workers=4) as pool:
         results = list(pool.map(open_once, range(4)))
     assert all(result.id == scan.id and not result.observation.history_available for result in results)
+
+
+def usage_snapshot(input_tokens=100, requests=1):
+    return {
+        "input_tokens": input_tokens,
+        "output_tokens": 20,
+        "total_tokens": input_tokens + 20,
+        "cache_read_tokens": 50,
+        "cache_write_tokens": 0,
+        "requests": requests,
+        "missing_usage_requests": 0,
+    }
+
+
+@pytest.mark.parametrize("terminal", ["failed", "canceled"])
+def test_usage_survives_failed_output_or_cancel_and_database_reopen(tmp_path, terminal):
+    path = tmp_path / "usage.sqlite3"
+    store, scan_id, claim = claimed_store(path)
+    # Duplicate and stale cumulative snapshots must never add the same usage twice.
+    emit(store, claim, "usage.updated", usage_snapshot())
+    emit(store, claim, "usage.updated", usage_snapshot(200, 2))
+    emit(store, claim, "usage.updated", usage_snapshot(200, 2))
+    emit(store, claim, "usage.updated", usage_snapshot())
+    assert store.get_scan(scan_id).metadata["ocr_usage"]["total_tokens"] == 220
+    if terminal == "canceled":
+        store.cancel(scan_id)
+    store.finish(
+        scan_id,
+        "same-worker",
+        ServiceScanResult(status=ScanStatus.FAILED, error="ocr_output_limit"),
+        lease_token=claim.lease_token,
+    )
+    final = ScanStore(path).get_scan(scan_id)
+    assert final.status.value == terminal
+    assert final.metadata["ocr_usage"]["total_tokens"] == 220
+    assert final.metadata["ocr_usage"]["state"] == "partial"
+
+
+def test_usage_final_summary_replaces_snapshot_instead_of_adding_it():
+    store, scan_id, claim = claimed_store()
+    emit(store, claim, "usage.updated", usage_snapshot())
+    result = ServiceScanResult(
+        status=ScanStatus.PARTIAL,
+        metadata={
+            "ocr_scan_schema_version": "ocr.scan-result/v1",
+            "ocr_summary": {"input_tokens": 200, "output_tokens": 30, "total_tokens": 230, "cache_read_tokens": 70},
+        },
+    )
+    final = store.finish(scan_id, "same-worker", result, lease_token=claim.lease_token)
+    assert final.metadata["ocr_usage"]["total_tokens"] == 230
+    assert final.metadata["ocr_usage"]["state"] == "final_reported"
+
+
+def test_usage_rejects_invalid_numbers_and_survives_history_cap():
+    store, scan_id, claim = claimed_store()
+    store.event_limit = 5
+    for _ in range(15):
+        emit(store, claim, "ocr.output_activity", {"stdout_bytes": 1})
+    emit(store, claim, "usage.updated", usage_snapshot())
+    assert store.get_scan(scan_id).metadata["ocr_usage"]["total_tokens"] == 120
+    invalid = usage_snapshot(300, 2)
+    invalid["output_tokens"] = -1
+    emit(store, claim, "usage.updated", invalid)
+    assert store.get_scan(scan_id).metadata["ocr_usage"]["total_tokens"] == 120
+
+
+def test_usage_adds_distinct_retry_attempts_without_losing_prior_cost():
+    store, scan_id, first = claimed_store()
+    emit(store, first, "usage.updated", usage_snapshot())
+    store.fail(scan_id, "same-worker", "ocr_timeout", lease_token=first.lease_token)
+    store.retry(scan_id)
+    second = store.claim_next("same-worker")
+    assert second is not None
+    emit(store, second, "usage.updated", usage_snapshot(200))
+    usage = store.get_scan(scan_id).metadata["ocr_usage"]
+    assert usage["total_tokens"] == 340
+    assert usage["attempts_recorded"] == 2
+    with pytest.raises(LeaseLost):
+        emit(store, first, "usage.updated", usage_snapshot(900, 9))
+    assert store.get_scan(scan_id).metadata["ocr_usage"]["total_tokens"] == 340

@@ -1,0 +1,60 @@
+{
+  "projects": [
+    {
+      "project": "VAmPI",
+      "scope_cleared": true,
+      "reports": {
+        "json": {
+          "status": 200,
+          "bytes": 70745
+        },
+        "sarif": {
+          "status": 200,
+          "bytes": 57869
+        },
+        "markdown": {
+          "status": 200,
+          "bytes": 44696
+        }
+      }
+    },
+    {
+      "project": "NodeGoat",
+      "scope_cleared": true,
+      "reports": {
+        "json": {
+          "status": 200,
+          "bytes": 464603
+        },
+        "sarif": {
+          "status": 200,
+          "bytes": 391580
+        },
+        "markdown": {
+          "status": 200,
+          "bytes": 310814
+        }
+      }
+    },
+    {
+      "project": "WebGoat",
+      "scope_cleared": true,
+      "reports": {
+        "json": {
+          "status": 200,
+          "bytes": 2934
+        },
+        "sarif": {
+          "status": 200,
+          "bytes": 527
+        },
+        "markdown": {
+          "status": 200,
+          "bytes": 514
+        }
+      }
+    }
+  ],
+  "active_scans": [],
+  "worker_workspaces_empty": true
+}

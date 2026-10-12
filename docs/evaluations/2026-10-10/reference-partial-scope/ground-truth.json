@@ -1,0 +1,58 @@
+{
+  "method": "Source-inspected positive cases and issue-specific negative controls, frozen before inspecting OCR findings. Not an exhaustive inventory. Repo comments and classroom labels make these intentionally vulnerable examples easier than production code.",
+  "model": "ds.public.deepseek-v4-pro",
+  "execution": "Static scan through Argus. No target installation, build, tests, application execution or exploit execution. No aggregate token budget. Existing 1800-second process deadline remains.",
+  "repositories": {
+    "VAmPI": "f16052dce83f05847133ec98f01c5193a41de7d8",
+    "NodeGoat": "c5cb68a7084e4ae7dcc60e6a98768720a81841e8",
+    "WebGoat": "044948d057b249735be2bfc14eccc9e3dc2eac34"
+  },
+  "positives": [
+    {"id":"VP01","project":"VAmPI","type":"SQL injection","file":"models/user_model.py","lines":[70,73],"reason":"get_user interpolates request-derived username into SQL in the default vuln=1 branch."},
+    {"id":"VP02","project":"VAmPI","type":"Unauthorized password change","file":"api_views/users.py","lines":[179,190],"reason":"Authenticated user can choose a different target username in update_password."},
+    {"id":"VP03","project":"VAmPI","type":"Object authorization / secret exposure","file":"api_views/books.py","lines":[45,58],"reason":"get_by_title retrieves another owner's book and secret without matching the authenticated owner."},
+    {"id":"VP04","project":"VAmPI","type":"Mass assignment / privilege escalation","file":"api_views/users.py","lines":[52,67],"reason":"Registration accepts the request's admin flag; schema permits additional properties."},
+    {"id":"VP05","project":"VAmPI","type":"Sensitive debug data exposure","file":"api_views/users.py","lines":[24,26],"related_file":"models/user_model.py","related_lines":[58,67],"reason":"Public debug handler returns all stored passwords, emails and admin flags."},
+    {"id":"VP06","project":"VAmPI","type":"Account / password enumeration","file":"api_views/users.py","lines":[101,110],"reason":"Login distinguishes nonexistent users and incorrect passwords; secure branch uses one generic message."},
+    {"id":"VP07","project":"VAmPI","type":"Regex denial of service","file":"api_views/users.py","lines":[143,146],"reason":"Unbounded request email reaches ambiguous nested repetition; explicitly documented RegexDOS lesson."},
+    {"id":"VP08","project":"VAmPI","type":"Predictable JWT signing secret","file":"config.py","lines":[13,13],"related_file":"models/user_model.py","related_lines":[30,49],"reason":"Static public weak secret is used for HS256 token signing and verification."},
+    {"id":"VP09","project":"VAmPI","type":"Plaintext password storage","file":"models/user_model.py","lines":[15,24],"related_file":"api_views/users.py","related_lines":[92,93],"reason":"Password stored directly and compared directly during login. Additional source-confirmed case beyond README labels."},
+    {"id":"NG01","project":"NodeGoat","type":"Server-side JavaScript injection","file":"app/routes/contributions.js","lines":[28,34],"reason":"Three request body fields reach eval before numeric validation; count as one root issue."},
+    {"id":"NG02","project":"NodeGoat","type":"NoSQL JavaScript injection","file":"app/data/allocations-dao.js","lines":[58,86],"related_file":"app/routes/allocations.js","reason":"Raw threshold interpolated into MongoDB $where JavaScript; integer-sanitizing fix is commented out."},
+    {"id":"NG03","project":"NodeGoat","type":"IDOR allocations","file":"app/routes/allocations.js","lines":[11,25],"reason":"User ID comes from URL parameters rather than session; route only checks logged-in state."},
+    {"id":"NG04","project":"NodeGoat","type":"SSRF","file":"app/routes/research.js","lines":[12,16],"reason":"User-controlled URL and symbol reach needle.get without destination restrictions."},
+    {"id":"NG05","project":"NodeGoat","type":"Missing administrator authorization","file":"app/routes/index.js","lines":[54,60],"related_file":"app/routes/benefits.js","reason":"Benefits operations require login but not isAdmin; commented secure routing is inactive."},
+    {"id":"NG06","project":"NodeGoat","type":"Plaintext password storage","file":"app/data/user-dao.js","lines":[17,30],"reason":"Password inserted directly; bcrypt implementation is inside a comment."},
+    {"id":"NG07","project":"NodeGoat","type":"Session fixation","file":"app/routes/session.js","lines":[104,119],"reason":"Authenticated userId assigned without regenerating session ID."},
+    {"id":"NG08","project":"NodeGoat","type":"Missing CSRF protection","file":"server.js","lines":[104,113],"reason":"CSRF middleware is commented out while cookie-authenticated mutation routes remain. Exploitability depends on browser/SameSite/deployment context; lower severity than direct injection."},
+    {"id":"NG09","project":"NodeGoat","type":"Open redirect","file":"app/routes/index.js","lines":[69,73],"reason":"Unrestricted req.query.url passed to res.redirect."},
+    {"id":"NG10","project":"NodeGoat","type":"Static session signing secret","file":"config/env/all.js","lines":[8,8],"related_file":"server.js","related_lines":[77,85],"reason":"Hardcoded shared cookieSecret consumed by express-session."},
+    {"id":"WG01","project":"WebGoat","type":"String SQL injection","file":"src/main/java/org/owasp/webgoat/lessons/sqlinjection/introduction/SqlInjectionLesson5a.java","lines":[38,59],"reason":"Request accountName concatenated into WHERE clause then executed."},
+    {"id":"WG02","project":"WebGoat","type":"Partially parameterized SQL injection","file":"src/main/java/org/owasp/webgoat/lessons/sqlinjection/introduction/SqlInjectionLesson5b.java","lines":[39,49],"reason":"login_count parsed/bound but userid concatenated into PreparedStatement SQL."},
+    {"id":"WG03","project":"WebGoat","type":"Union SQL injection","file":"src/main/java/org/owasp/webgoat/lessons/sqlinjection/advanced/SqlInjectionLesson6a.java","lines":[44,56],"reason":"User last_name concatenated; union checker grades attack and does not prevent execution."},
+    {"id":"WG04","project":"WebGoat","type":"ORDER BY SQL injection","file":"src/main/java/org/owasp/webgoat/lessons/sqlinjection/mitigation/Servers.java","lines":[44,54],"reason":"Unrestricted request column concatenated before prepareStatement; prepared wrapper does not parameterize identifiers."},
+    {"id":"WG05","project":"WebGoat","type":"XXE","file":"src/main/java/org/owasp/webgoat/lessons/xxe/CommentsCache.java","lines":[69,82],"related_file":"src/main/java/org/owasp/webgoat/lessons/xxe/SimpleXXE.java","related_lines":[49,55],"reason":"Request XML parsed with external entities/DTD enabled when secure=false."},
+    {"id":"WG06","project":"WebGoat","type":"Unsafe deserialization","file":"src/main/java/org/owasp/webgoat/lessons/deserialization/InsecureDeserializationTask.java","lines":[32,45],"reason":"Request Base64 token reaches ObjectInputStream.readObject without pre-deserialization filtering; type check occurs afterwards."},
+    {"id":"WG07","project":"WebGoat","type":"IDOR profile read","file":"src/main/java/org/owasp/webgoat/lessons/idor/IDORViewOtherProfile.java","lines":[42,59],"reason":"Lesson returns a profile for a different URL userId instead of enforcing ownership."},
+    {"id":"WG08","project":"WebGoat","type":"IDOR profile edit","file":"src/main/java/org/owasp/webgoat/lessons/idor/IDOREditOtherProfile.java","lines":[39,58],"reason":"Lesson accepts another user's ID and submitted role/color without ownership authorization; changes stay in lesson session."},
+    {"id":"WG09","project":"WebGoat","type":"SQL blacklist bypass","file":"src/main/java/org/owasp/webgoat/lessons/sqlinjection/mitigation/SqlOnlyInputValidationOnKeywords.java","lines":[35,41],"reason":"Single-pass keyword stripping and space checks feed an injectable query; not a parameterized query."}
+  ],
+  "negative_controls": [
+    {"id":"NC01","project":"VAmPI","file":"models/user_model.py","lines":[79,80],"reject_claim":"SQL injection in SQLAlchemy filter_by secure branch"},
+    {"id":"NC02","project":"VAmPI","file":"api_views/books.py","lines":[61,70],"reject_claim":"IDOR in secure branch that matches authenticated book owner"},
+    {"id":"NC03","project":"VAmPI","file":"api_views/users.py","lines":[206,222],"reject_claim":"Any normal authenticated user can directly call delete_user despite explicit admin guard"},
+    {"id":"NC04","project":"NodeGoat","file":"app/data/user-dao.js","lines":[97,100],"reject_claim":"NoSQL operator injection into integer-parsed getUserById _id"},
+    {"id":"NC05","project":"WebGoat","file":"src/main/java/org/owasp/webgoat/lessons/sqlinjection/advanced/SqlInjectionChallengeLogin.java","lines":[32,40],"reject_claim":"SQL injection through properly bound username/password placeholders"},
+    {"id":"NC06","project":"WebGoat","file":"src/main/java/org/owasp/webgoat/lessons/sqlinjection/mitigation/SqlInjectionLesson10a.java","lines":[25,61],"reject_claim":"SQL injection execution in text-answer quiz with no database query"},
+    {"id":"NC07","project":"WebGoat","file":"src/main/java/org/owasp/webgoat/lessons/idor/IDORViewOwnProfile.java","lines":[29,41],"reject_claim":"URL userId controls own profile although function accepts no userId and uses session identity"}
+  ],
+  "scoring_rules": [
+    "Expected-case recall = matched positive cases / 28; each expected case counted once, regardless of duplicate findings.",
+    "A finding must identify the relevant unsafe behavior and code/function, not merely the file or a keyword.",
+    "Findings outside the expected list are reviewed separately; they are not automatically false positives.",
+    "Confirmed issue-specific negative-control claims are false positives; unrelated valid issues in the same file are not.",
+    "Report valid unique issues, duplicates, false positives, uncertain/deployment-dependent findings and out-of-scope nonsecurity findings separately.",
+    "If scan coverage is partial, report overall expected-case recall and coverage-qualified recall separately; never call incomplete coverage complete.",
+    "This is one run per selected source scope and one model. It does not establish run-to-run stability, production effectiveness or dynamic exploitability."
+  ]
+}

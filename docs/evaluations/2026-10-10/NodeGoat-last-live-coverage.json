@@ -1,0 +1,13 @@
+{
+  "scan_id": "5af058937a134c6791dfd94a95b21a6a",
+  "source": "structured live observation, not terminal scan_result",
+  "coverage": {
+    "total": 94,
+    "reviewed": 93,
+    "failed": 0,
+    "skipped": 0,
+    "percent": 99
+  },
+  "elapsed_seconds": 1573.511,
+  "last_progress_at": "2026-10-10T12:10:36Z"
+}

@@ -5,16 +5,18 @@ import { formatDuration } from '../../lib/utils';
 interface ActivityAlertProps {
   activityState: string | undefined;
   deadlineAt: string | null | undefined;
+  isActive?: boolean;
 }
 
 export const ActivityAlert: React.FC<ActivityAlertProps> = ({
   activityState,
   deadlineAt,
+  isActive = true,
 }) => {
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!deadlineAt) {
+    if (!deadlineAt || !isActive) {
       setTimeLeft(null);
       return;
     }
@@ -29,12 +31,14 @@ export const ActivityAlert: React.FC<ActivityAlertProps> = ({
     calcTime();
     const interval = setInterval(calcTime, 1000);
     return () => clearInterval(interval);
-  }, [deadlineAt]);
+  }, [deadlineAt, isActive]);
 
   const isIdleWarning = activityState === 'idle_warning';
   const isStaleWarning = activityState === 'stale_warning';
 
-  if (!isIdleWarning && !isStaleWarning && !deadlineAt) {
+  const visibleDeadline = isActive ? deadlineAt : null;
+
+  if (!isIdleWarning && !isStaleWarning && !visibleDeadline) {
     return null;
   }
 
@@ -71,7 +75,7 @@ export const ActivityAlert: React.FC<ActivityAlertProps> = ({
       )}
 
       {/* Deadline Countdown */}
-      {deadlineAt && timeLeft !== null && (
+      {visibleDeadline && timeLeft !== null && (
         <div className="px-3.5 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-xs text-zinc-400 flex items-center justify-between">
           <span className="flex items-center gap-1.5 text-zinc-300">
             <Clock className="w-3.5 h-3.5 text-zinc-500" />

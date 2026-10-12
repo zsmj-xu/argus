@@ -1,8 +1,8 @@
 ARG PYTHON_IMAGE=python:3.11-slim-bookworm@sha256:528257d48c1da0dcecc2e725d1ae34498d60c965f1241e39cd6a85a8859bdf84
 ARG GO_IMAGE=golang:1.25.5-bookworm@sha256:d9132cce84391efab786495288756d60e1da215b1f94e87860aeefc3d4c45b6d
 ARG NODE_IMAGE=node:22-bookworm-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5
-ARG OPENCODEREVIEW_VERSION=codex/argus-aligned-refactor
-ARG OPENCODEREVIEW_COMMIT=072808b6b0b12a1408b31889539c03878eff0f61
+ARG OPENCODEREVIEW_VERSION=codex/usage-events
+ARG OPENCODEREVIEW_COMMIT=16f10f1efeb69d6f3cd2391511e225ad54809e2e
 ARG OPENCODEREVIEW_REPOSITORY=https://github.com/zsmj-xu/open-code-review.git
 
 FROM ${GO_IMAGE} AS ocr-builder
@@ -47,6 +47,7 @@ COPY --from=python-builder /install /usr/local
 COPY --from=ocr-builder /out/ocr /usr/local/bin/ocr
 COPY --from=frontend-builder /build/frontend/dist ./frontend/dist
 COPY argus ./argus
+COPY --chmod=755 scripts/gitlab-credential-helper.sh /usr/local/bin/argus-gitlab-credential
 RUN useradd --create-home --uid 10001 argus \
     && chown -R argus:argus /app /var/lib/argus
 USER argus

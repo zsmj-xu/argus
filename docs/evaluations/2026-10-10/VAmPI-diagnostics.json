@@ -1,0 +1,3298 @@
+{
+  "attempt": 1,
+  "commit_sha": "f16052dce83f05847133ec98f01c5193a41de7d8",
+  "events": [
+    {
+      "accepted": true,
+      "attempt": 0,
+      "code": "scan_created",
+      "created_at": "2026-10-10T11:45:07+00:00",
+      "cursor": 292,
+      "data": {},
+      "dropped": false,
+      "event_id": 292,
+      "id": 292,
+      "level": "info",
+      "message": "Scan accepted and queued.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "api",
+      "stage": "queued",
+      "timestamp": "2026-10-10T11:45:07+00:00",
+      "truncated": false,
+      "type": "scan.created"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "claim_acquired",
+      "created_at": "2026-10-10T11:45:08+00:00",
+      "cursor": 295,
+      "data": {
+        "attempt": 1
+      },
+      "dropped": false,
+      "event_id": 295,
+      "id": 295,
+      "level": "info",
+      "message": "Worker claimed the scan attempt.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "worker",
+      "stage": "preparing",
+      "timestamp": "2026-10-10T11:45:08+00:00",
+      "truncated": false,
+      "type": "scan.claimed"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "phase_changed",
+      "created_at": "2026-10-10T11:45:08+00:00",
+      "cursor": 296,
+      "data": {},
+      "dropped": false,
+      "event_id": 296,
+      "id": 296,
+      "level": "info",
+      "message": "Scan entered a worker phase.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "worker",
+      "stage": "git_fetching",
+      "timestamp": "2026-10-10T11:45:08+00:00",
+      "truncated": false,
+      "type": "scan.phase"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "phase_changed",
+      "created_at": "2026-10-10T11:45:10+00:00",
+      "cursor": 297,
+      "data": {},
+      "dropped": false,
+      "event_id": 297,
+      "id": 297,
+      "level": "info",
+      "message": "Scan entered a worker phase.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "worker",
+      "stage": "source_checking",
+      "timestamp": "2026-10-10T11:45:10+00:00",
+      "truncated": false,
+      "type": "scan.phase"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "source_checked",
+      "created_at": "2026-10-10T11:45:10+00:00",
+      "cursor": 298,
+      "data": {
+        "total_files": 22
+      },
+      "dropped": false,
+      "event_id": 298,
+      "id": 298,
+      "level": "info",
+      "message": "The disposable source checkout passed safety checks.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "git",
+      "stage": "source_checking",
+      "timestamp": "2026-10-10T11:45:10+00:00",
+      "truncated": false,
+      "type": "progress"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "commit_recorded",
+      "created_at": "2026-10-10T11:45:10+00:00",
+      "cursor": 299,
+      "data": {
+        "commit_sha": "f16052dce83f05847133ec98f01c5193a41de7d8"
+      },
+      "dropped": false,
+      "event_id": 299,
+      "id": 299,
+      "level": "info",
+      "message": "The resolved commit was recorded.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "worker",
+      "stage": "source_checking",
+      "timestamp": "2026-10-10T11:45:10+00:00",
+      "truncated": false,
+      "type": "scan.commit"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "phase_changed",
+      "created_at": "2026-10-10T11:45:10+00:00",
+      "cursor": 300,
+      "data": {},
+      "dropped": false,
+      "event_id": 300,
+      "id": 300,
+      "level": "info",
+      "message": "Scan entered a worker phase.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "worker",
+      "stage": "ocr_starting",
+      "timestamp": "2026-10-10T11:45:10+00:00",
+      "truncated": false,
+      "type": "scan.phase"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "ocr_starting",
+      "created_at": "2026-10-10T11:45:10+00:00",
+      "cursor": 301,
+      "data": {
+        "capabilities": {
+          "event_protocol": true,
+          "file_progress": false,
+          "llm_requests": false
+        },
+        "deadline_at": "2026-10-10T12:15:10.272624+00:00",
+        "engine_commit": "072808b6b0b12a1408b31889539c03878eff0f61",
+        "event_protocol": true,
+        "model": "ds.public.deepseek-v4-pro",
+        "timeout_seconds": 1800.0
+      },
+      "dropped": false,
+      "event_id": 301,
+      "id": 301,
+      "level": "info",
+      "message": "OCR review is starting.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_starting",
+      "timestamp": "2026-10-10T11:45:10+00:00",
+      "truncated": false,
+      "type": "phase"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "phase_changed",
+      "created_at": "2026-10-10T11:45:10+00:00",
+      "cursor": 302,
+      "data": {},
+      "dropped": false,
+      "event_id": 302,
+      "id": 302,
+      "level": "info",
+      "message": "Scan entered a worker phase.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "worker",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:10+00:00",
+      "truncated": false,
+      "type": "scan.phase"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "ocr_running",
+      "created_at": "2026-10-10T11:45:10+00:00",
+      "cursor": 303,
+      "data": {
+        "capabilities": {
+          "event_protocol": true,
+          "file_progress": false,
+          "llm_requests": false
+        },
+        "deadline_at": "2026-10-10T12:15:10.272624+00:00",
+        "engine_commit": "072808b6b0b12a1408b31889539c03878eff0f61",
+        "event_protocol": true,
+        "model": "ds.public.deepseek-v4-pro",
+        "timeout_seconds": 1800.0
+      },
+      "dropped": false,
+      "event_id": 303,
+      "id": 303,
+      "level": "info",
+      "message": "OCR review is running.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:10+00:00",
+      "truncated": false,
+      "type": "phase"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "process_started",
+      "created_at": "2026-10-10T11:45:10+00:00",
+      "cursor": 304,
+      "data": {
+        "pid": 22332
+      },
+      "dropped": false,
+      "event_id": 304,
+      "id": 304,
+      "level": "info",
+      "message": "OpenCodeReview process started.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_starting",
+      "timestamp": "2026-10-10T11:45:10+00:00",
+      "truncated": false,
+      "type": "ocr.started"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "session_started",
+      "created_at": "2026-10-10T11:45:10+00:00",
+      "cursor": 305,
+      "data": {
+        "model": "ds.public.deepseek-v4-pro",
+        "pid": 22332,
+        "session_id": "425722af-633e-45f3-a6c3-2b59315e834a"
+      },
+      "dropped": false,
+      "event_id": 305,
+      "id": 305,
+      "level": "info",
+      "message": "OCR reported a session start.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:10+00:00",
+      "truncated": false,
+      "type": "session.started"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "output_activity",
+      "created_at": "2026-10-10T11:45:10+00:00",
+      "cursor": 306,
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 1,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "dropped": false,
+      "event_id": 306,
+      "id": 306,
+      "level": "info",
+      "message": "The parent observed bounded process output activity.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:10+00:00",
+      "truncated": false,
+      "type": "ocr.output_activity"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "scan_inventory",
+      "created_at": "2026-10-10T11:45:10+00:00",
+      "cursor": 307,
+      "data": {
+        "candidates": 20,
+        "failed_files": 0,
+        "files_total": 20,
+        "reviewed_files": 0,
+        "session_id": "425722af-633e-45f3-a6c3-2b59315e834a",
+        "skipped_files": 0
+      },
+      "dropped": false,
+      "event_id": 307,
+      "id": 307,
+      "level": "info",
+      "message": "OCR reported scan inventory.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:10+00:00",
+      "truncated": false,
+      "type": "scan.inventory"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_started",
+      "created_at": "2026-10-10T11:45:10+00:00",
+      "cursor": 308,
+      "data": {
+        "index": 0,
+        "ordinal": 1,
+        "path": "openapi_specs/VAmPI.postman_collection.json",
+        "size_bytes": 19536,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 308,
+      "id": 308,
+      "level": "info",
+      "message": "OCR reported a file start.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:10+00:00",
+      "truncated": false,
+      "type": "file.started"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "output_activity",
+      "created_at": "2026-10-10T11:45:12+00:00",
+      "cursor": 309,
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 3,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "dropped": false,
+      "event_id": 309,
+      "id": 309,
+      "level": "info",
+      "message": "The parent observed bounded process output activity.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:12+00:00",
+      "truncated": false,
+      "type": "ocr.output_activity"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_completed",
+      "created_at": "2026-10-10T11:45:20+00:00",
+      "cursor": 310,
+      "data": {
+        "duration_ms": 9924,
+        "index": 0,
+        "ordinal": 1,
+        "path": "openapi_specs/VAmPI.postman_collection.json",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 310,
+      "id": 310,
+      "level": "info",
+      "message": "OCR reported a file completion.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:20+00:00",
+      "truncated": false,
+      "type": "file.completed"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_started",
+      "created_at": "2026-10-10T11:45:20+00:00",
+      "cursor": 311,
+      "data": {
+        "index": 1,
+        "ordinal": 2,
+        "path": "api_views/__init__.py",
+        "size_bytes": 0,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 311,
+      "id": 311,
+      "level": "info",
+      "message": "OCR reported a file start.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:20+00:00",
+      "truncated": false,
+      "type": "file.started"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_started",
+      "created_at": "2026-10-10T11:45:20+00:00",
+      "cursor": 312,
+      "data": {
+        "index": 2,
+        "ordinal": 3,
+        "path": "api_views/books.py",
+        "size_bytes": 3043,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 312,
+      "id": 312,
+      "level": "info",
+      "message": "OCR reported a file start.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:20+00:00",
+      "truncated": false,
+      "type": "file.started"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_started",
+      "created_at": "2026-10-10T11:45:20+00:00",
+      "cursor": 313,
+      "data": {
+        "index": 3,
+        "ordinal": 4,
+        "path": "api_views/json_schemas.py",
+        "size_bytes": 766,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 313,
+      "id": 313,
+      "level": "info",
+      "message": "OCR reported a file start.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:20+00:00",
+      "truncated": false,
+      "type": "file.started"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_started",
+      "created_at": "2026-10-10T11:45:20+00:00",
+      "cursor": 314,
+      "data": {
+        "index": 4,
+        "ordinal": 5,
+        "path": "api_views/main.py",
+        "size_bytes": 791,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 314,
+      "id": 314,
+      "level": "info",
+      "message": "OCR reported a file start.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:20+00:00",
+      "truncated": false,
+      "type": "file.started"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_started",
+      "created_at": "2026-10-10T11:45:20+00:00",
+      "cursor": 315,
+      "data": {
+        "index": 5,
+        "ordinal": 6,
+        "path": "api_views/users.py",
+        "size_bytes": 9257,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 315,
+      "id": 315,
+      "level": "info",
+      "message": "OCR reported a file start.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:20+00:00",
+      "truncated": false,
+      "type": "file.started"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_started",
+      "created_at": "2026-10-10T11:45:20+00:00",
+      "cursor": 316,
+      "data": {
+        "index": 6,
+        "ordinal": 7,
+        "path": "app.py",
+        "size_bytes": 536,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 316,
+      "id": 316,
+      "level": "info",
+      "message": "OCR reported a file start.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:20+00:00",
+      "truncated": false,
+      "type": "file.started"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_started",
+      "created_at": "2026-10-10T11:45:20+00:00",
+      "cursor": 317,
+      "data": {
+        "index": 7,
+        "ordinal": 8,
+        "path": "config.py",
+        "size_bytes": 920,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 317,
+      "id": 317,
+      "level": "info",
+      "message": "OCR reported a file start.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:20+00:00",
+      "truncated": false,
+      "type": "file.started"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_started",
+      "created_at": "2026-10-10T11:45:20+00:00",
+      "cursor": 318,
+      "data": {
+        "index": 8,
+        "ordinal": 9,
+        "path": "database/__init__.py",
+        "size_bytes": 0,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 318,
+      "id": 318,
+      "level": "info",
+      "message": "OCR reported a file start.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:20+00:00",
+      "truncated": false,
+      "type": "file.started"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "output_activity",
+      "created_at": "2026-10-10T11:45:20+00:00",
+      "cursor": 319,
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 12,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "dropped": false,
+      "event_id": 319,
+      "id": 319,
+      "level": "info",
+      "message": "The parent observed bounded process output activity.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:20+00:00",
+      "truncated": false,
+      "type": "ocr.output_activity"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_completed",
+      "created_at": "2026-10-10T11:45:23+00:00",
+      "cursor": 320,
+      "data": {
+        "duration_ms": 2514,
+        "index": 1,
+        "ordinal": 2,
+        "path": "api_views/__init__.py",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 320,
+      "id": 320,
+      "level": "info",
+      "message": "OCR reported a file completion.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:23+00:00",
+      "truncated": false,
+      "type": "file.completed"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_started",
+      "created_at": "2026-10-10T11:45:23+00:00",
+      "cursor": 321,
+      "data": {
+        "index": 9,
+        "ordinal": 10,
+        "path": "models/__init__.py",
+        "size_bytes": 0,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 321,
+      "id": 321,
+      "level": "info",
+      "message": "OCR reported a file start.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:23+00:00",
+      "truncated": false,
+      "type": "file.started"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "output_activity",
+      "created_at": "2026-10-10T11:45:23+00:00",
+      "cursor": 322,
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 14,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "dropped": false,
+      "event_id": 322,
+      "id": 322,
+      "level": "info",
+      "message": "The parent observed bounded process output activity.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:23+00:00",
+      "truncated": false,
+      "type": "ocr.output_activity"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_completed",
+      "created_at": "2026-10-10T11:45:24+00:00",
+      "cursor": 323,
+      "data": {
+        "duration_ms": 3661,
+        "index": 8,
+        "ordinal": 9,
+        "path": "database/__init__.py",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 323,
+      "id": 323,
+      "level": "info",
+      "message": "OCR reported a file completion.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:24+00:00",
+      "truncated": false,
+      "type": "file.completed"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_started",
+      "created_at": "2026-10-10T11:45:24+00:00",
+      "cursor": 324,
+      "data": {
+        "index": 10,
+        "ordinal": 11,
+        "path": "models/books_model.py",
+        "size_bytes": 952,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 324,
+      "id": 324,
+      "level": "info",
+      "message": "OCR reported a file start.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:24+00:00",
+      "truncated": false,
+      "type": "file.started"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "output_activity",
+      "created_at": "2026-10-10T11:45:25+00:00",
+      "cursor": 325,
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 16,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "dropped": false,
+      "event_id": 325,
+      "id": 325,
+      "level": "info",
+      "message": "The parent observed bounded process output activity.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:25+00:00",
+      "truncated": false,
+      "type": "ocr.output_activity"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_completed",
+      "created_at": "2026-10-10T11:45:25+00:00",
+      "cursor": 326,
+      "data": {
+        "duration_ms": 2309,
+        "index": 9,
+        "ordinal": 10,
+        "path": "models/__init__.py",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 326,
+      "id": 326,
+      "level": "info",
+      "message": "OCR reported a file completion.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:25+00:00",
+      "truncated": false,
+      "type": "file.completed"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_started",
+      "created_at": "2026-10-10T11:45:25+00:00",
+      "cursor": 327,
+      "data": {
+        "index": 11,
+        "ordinal": 12,
+        "path": "models/user_model.py",
+        "size_bytes": 3642,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 327,
+      "id": 327,
+      "level": "info",
+      "message": "OCR reported a file start.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:25+00:00",
+      "truncated": false,
+      "type": "file.started"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "output_activity",
+      "created_at": "2026-10-10T11:45:27+00:00",
+      "cursor": 328,
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 18,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "dropped": false,
+      "event_id": 328,
+      "id": 328,
+      "level": "info",
+      "message": "The parent observed bounded process output activity.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:27+00:00",
+      "truncated": false,
+      "type": "ocr.output_activity"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_completed",
+      "created_at": "2026-10-10T11:45:45+00:00",
+      "cursor": 329,
+      "data": {
+        "duration_ms": 25297,
+        "index": 6,
+        "ordinal": 7,
+        "path": "app.py",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 329,
+      "id": 329,
+      "level": "info",
+      "message": "OCR reported a file completion.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:45+00:00",
+      "truncated": false,
+      "type": "file.completed"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "output_activity",
+      "created_at": "2026-10-10T11:45:45+00:00",
+      "cursor": 330,
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 19,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "dropped": false,
+      "event_id": 330,
+      "id": 330,
+      "level": "info",
+      "message": "The parent observed bounded process output activity.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:45+00:00",
+      "truncated": false,
+      "type": "ocr.output_activity"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_completed",
+      "created_at": "2026-10-10T11:45:52+00:00",
+      "cursor": 331,
+      "data": {
+        "duration_ms": 31799,
+        "index": 3,
+        "ordinal": 4,
+        "path": "api_views/json_schemas.py",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 331,
+      "id": 331,
+      "level": "info",
+      "message": "OCR reported a file completion.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:52+00:00",
+      "truncated": false,
+      "type": "file.completed"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "output_activity",
+      "created_at": "2026-10-10T11:45:52+00:00",
+      "cursor": 332,
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 20,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "dropped": false,
+      "event_id": 332,
+      "id": 332,
+      "level": "info",
+      "message": "The parent observed bounded process output activity.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:52+00:00",
+      "truncated": false,
+      "type": "ocr.output_activity"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_completed",
+      "created_at": "2026-10-10T11:46:25+00:00",
+      "cursor": 333,
+      "data": {
+        "duration_ms": 61701,
+        "index": 10,
+        "ordinal": 11,
+        "path": "models/books_model.py",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 333,
+      "id": 333,
+      "level": "info",
+      "message": "OCR reported a file completion.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:46:25+00:00",
+      "truncated": false,
+      "type": "file.completed"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "output_activity",
+      "created_at": "2026-10-10T11:46:25+00:00",
+      "cursor": 334,
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 21,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "dropped": false,
+      "event_id": 334,
+      "id": 334,
+      "level": "info",
+      "message": "The parent observed bounded process output activity.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:46:25+00:00",
+      "truncated": false,
+      "type": "ocr.output_activity"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_completed",
+      "created_at": "2026-10-10T11:46:31+00:00",
+      "cursor": 335,
+      "data": {
+        "duration_ms": 70932,
+        "index": 4,
+        "ordinal": 5,
+        "path": "api_views/main.py",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 335,
+      "id": 335,
+      "level": "info",
+      "message": "OCR reported a file completion.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:46:31+00:00",
+      "truncated": false,
+      "type": "file.completed"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "output_activity",
+      "created_at": "2026-10-10T11:46:31+00:00",
+      "cursor": 336,
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 22,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "dropped": false,
+      "event_id": 336,
+      "id": 336,
+      "level": "info",
+      "message": "The parent observed bounded process output activity.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:46:31+00:00",
+      "truncated": false,
+      "type": "ocr.output_activity"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_completed",
+      "created_at": "2026-10-10T11:46:32+00:00",
+      "cursor": 337,
+      "data": {
+        "duration_ms": 66849,
+        "index": 11,
+        "ordinal": 12,
+        "path": "models/user_model.py",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 337,
+      "id": 337,
+      "level": "info",
+      "message": "OCR reported a file completion.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:46:32+00:00",
+      "truncated": false,
+      "type": "file.completed"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "output_activity",
+      "created_at": "2026-10-10T11:46:33+00:00",
+      "cursor": 338,
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 23,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "dropped": false,
+      "event_id": 338,
+      "id": 338,
+      "level": "info",
+      "message": "The parent observed bounded process output activity.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:46:33+00:00",
+      "truncated": false,
+      "type": "ocr.output_activity"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_completed",
+      "created_at": "2026-10-10T11:46:50+00:00",
+      "cursor": 339,
+      "data": {
+        "duration_ms": 90020,
+        "index": 2,
+        "ordinal": 3,
+        "path": "api_views/books.py",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 339,
+      "id": 339,
+      "level": "info",
+      "message": "OCR reported a file completion.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:46:50+00:00",
+      "truncated": false,
+      "type": "file.completed"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "output_activity",
+      "created_at": "2026-10-10T11:46:50+00:00",
+      "cursor": 340,
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 24,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "dropped": false,
+      "event_id": 340,
+      "id": 340,
+      "level": "info",
+      "message": "The parent observed bounded process output activity.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:46:50+00:00",
+      "truncated": false,
+      "type": "ocr.output_activity"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_completed",
+      "created_at": "2026-10-10T11:46:53+00:00",
+      "cursor": 341,
+      "data": {
+        "duration_ms": 93281,
+        "index": 7,
+        "ordinal": 8,
+        "path": "config.py",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 341,
+      "id": 341,
+      "level": "info",
+      "message": "OCR reported a file completion.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:46:53+00:00",
+      "truncated": false,
+      "type": "file.completed"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "output_activity",
+      "created_at": "2026-10-10T11:46:53+00:00",
+      "cursor": 342,
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 25,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "dropped": false,
+      "event_id": 342,
+      "id": 342,
+      "level": "info",
+      "message": "The parent observed bounded process output activity.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:46:53+00:00",
+      "truncated": false,
+      "type": "ocr.output_activity"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_completed",
+      "created_at": "2026-10-10T11:47:29+00:00",
+      "cursor": 343,
+      "data": {
+        "duration_ms": 128506,
+        "index": 5,
+        "ordinal": 6,
+        "path": "api_views/users.py",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 343,
+      "id": 343,
+      "level": "info",
+      "message": "OCR reported a file completion.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:47:29+00:00",
+      "truncated": false,
+      "type": "file.completed"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_started",
+      "created_at": "2026-10-10T11:47:29+00:00",
+      "cursor": 344,
+      "data": {
+        "index": 12,
+        "ordinal": 13,
+        "path": "docker-compose.yaml",
+        "size_bytes": 301,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 344,
+      "id": 344,
+      "level": "info",
+      "message": "OCR reported a file start.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:47:29+00:00",
+      "truncated": false,
+      "type": "file.started"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "output_activity",
+      "created_at": "2026-10-10T11:47:29+00:00",
+      "cursor": 345,
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 27,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "dropped": false,
+      "event_id": 345,
+      "id": 345,
+      "level": "info",
+      "message": "The parent observed bounded process output activity.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:47:29+00:00",
+      "truncated": false,
+      "type": "ocr.output_activity"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_completed",
+      "created_at": "2026-10-10T11:47:35+00:00",
+      "cursor": 346,
+      "data": {
+        "duration_ms": 6413,
+        "index": 12,
+        "ordinal": 13,
+        "path": "docker-compose.yaml",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 346,
+      "id": 346,
+      "level": "info",
+      "message": "OCR reported a file completion.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:47:35+00:00",
+      "truncated": false,
+      "type": "file.completed"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_started",
+      "created_at": "2026-10-10T11:47:35+00:00",
+      "cursor": 347,
+      "data": {
+        "index": 13,
+        "ordinal": 14,
+        "path": ".github/FUNDING.yml",
+        "size_bytes": 14,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 347,
+      "id": 347,
+      "level": "info",
+      "message": "OCR reported a file start.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:47:35+00:00",
+      "truncated": false,
+      "type": "file.started"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_started",
+      "created_at": "2026-10-10T11:47:35+00:00",
+      "cursor": 348,
+      "data": {
+        "index": 14,
+        "ordinal": 15,
+        "path": ".github/workflows/docker-image.yml",
+        "size_bytes": 702,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 348,
+      "id": 348,
+      "level": "info",
+      "message": "OCR reported a file start.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:47:35+00:00",
+      "truncated": false,
+      "type": "file.started"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_started",
+      "created_at": "2026-10-10T11:47:35+00:00",
+      "cursor": 349,
+      "data": {
+        "index": 15,
+        "ordinal": 16,
+        "path": "openapi_specs/openapi3.yml",
+        "size_bytes": 19770,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 349,
+      "id": 349,
+      "level": "info",
+      "message": "OCR reported a file start.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:47:35+00:00",
+      "truncated": false,
+      "type": "file.started"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "output_activity",
+      "created_at": "2026-10-10T11:47:35+00:00",
+      "cursor": 350,
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 31,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "dropped": false,
+      "event_id": 350,
+      "id": 350,
+      "level": "info",
+      "message": "The parent observed bounded process output activity.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:47:35+00:00",
+      "truncated": false,
+      "type": "ocr.output_activity"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_completed",
+      "created_at": "2026-10-10T11:47:48+00:00",
+      "cursor": 351,
+      "data": {
+        "duration_ms": 13400,
+        "index": 13,
+        "ordinal": 14,
+        "path": ".github/FUNDING.yml",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 351,
+      "id": 351,
+      "level": "info",
+      "message": "OCR reported a file completion.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:47:48+00:00",
+      "truncated": false,
+      "type": "file.completed"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "output_activity",
+      "created_at": "2026-10-10T11:47:48+00:00",
+      "cursor": 352,
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 32,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "dropped": false,
+      "event_id": 352,
+      "id": 352,
+      "level": "info",
+      "message": "The parent observed bounded process output activity.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:47:48+00:00",
+      "truncated": false,
+      "type": "ocr.output_activity"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_completed",
+      "created_at": "2026-10-10T11:48:39+00:00",
+      "cursor": 353,
+      "data": {
+        "duration_ms": 64530,
+        "index": 15,
+        "ordinal": 16,
+        "path": "openapi_specs/openapi3.yml",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 353,
+      "id": 353,
+      "level": "info",
+      "message": "OCR reported a file completion.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:48:39+00:00",
+      "truncated": false,
+      "type": "file.completed"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "output_activity",
+      "created_at": "2026-10-10T11:48:39+00:00",
+      "cursor": 354,
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 33,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "dropped": false,
+      "event_id": 354,
+      "id": 354,
+      "level": "info",
+      "message": "The parent observed bounded process output activity.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:48:39+00:00",
+      "truncated": false,
+      "type": "ocr.output_activity"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_completed",
+      "created_at": "2026-10-10T11:48:47+00:00",
+      "cursor": 355,
+      "data": {
+        "duration_ms": 71589,
+        "index": 14,
+        "ordinal": 15,
+        "path": ".github/workflows/docker-image.yml",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 355,
+      "id": 355,
+      "level": "info",
+      "message": "OCR reported a file completion.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:48:47+00:00",
+      "truncated": false,
+      "type": "file.completed"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_started",
+      "created_at": "2026-10-10T11:48:47+00:00",
+      "cursor": 356,
+      "data": {
+        "index": 16,
+        "ordinal": 17,
+        "path": ".dockerignore",
+        "size_bytes": 55,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 356,
+      "id": 356,
+      "level": "info",
+      "message": "OCR reported a file start.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:48:47+00:00",
+      "truncated": false,
+      "type": "file.started"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_started",
+      "created_at": "2026-10-10T11:48:47+00:00",
+      "cursor": 357,
+      "data": {
+        "index": 17,
+        "ordinal": 18,
+        "path": ".gitignore",
+        "size_bytes": 1060,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 357,
+      "id": 357,
+      "level": "info",
+      "message": "OCR reported a file start.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:48:47+00:00",
+      "truncated": false,
+      "type": "file.started"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_started",
+      "created_at": "2026-10-10T11:48:47+00:00",
+      "cursor": 358,
+      "data": {
+        "index": 18,
+        "ordinal": 19,
+        "path": "Dockerfile",
+        "size_bytes": 466,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 358,
+      "id": 358,
+      "level": "info",
+      "message": "OCR reported a file start.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:48:47+00:00",
+      "truncated": false,
+      "type": "file.started"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_started",
+      "created_at": "2026-10-10T11:48:47+00:00",
+      "cursor": 359,
+      "data": {
+        "index": 19,
+        "ordinal": 20,
+        "path": "LICENSE",
+        "size_bytes": 1063,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 359,
+      "id": 359,
+      "level": "info",
+      "message": "OCR reported a file start.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:48:47+00:00",
+      "truncated": false,
+      "type": "file.started"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "output_activity",
+      "created_at": "2026-10-10T11:48:47+00:00",
+      "cursor": 360,
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 38,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "dropped": false,
+      "event_id": 360,
+      "id": 360,
+      "level": "info",
+      "message": "The parent observed bounded process output activity.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:48:47+00:00",
+      "truncated": false,
+      "type": "ocr.output_activity"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_completed",
+      "created_at": "2026-10-10T11:48:53+00:00",
+      "cursor": 361,
+      "data": {
+        "duration_ms": 6449,
+        "index": 19,
+        "ordinal": 20,
+        "path": "LICENSE",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 361,
+      "id": 361,
+      "level": "info",
+      "message": "OCR reported a file completion.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:48:53+00:00",
+      "truncated": false,
+      "type": "file.completed"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "output_activity",
+      "created_at": "2026-10-10T11:48:53+00:00",
+      "cursor": 362,
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 39,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "dropped": false,
+      "event_id": 362,
+      "id": 362,
+      "level": "info",
+      "message": "The parent observed bounded process output activity.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:48:53+00:00",
+      "truncated": false,
+      "type": "ocr.output_activity"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_completed",
+      "created_at": "2026-10-10T11:49:17+00:00",
+      "cursor": 363,
+      "data": {
+        "duration_ms": 30818,
+        "index": 17,
+        "ordinal": 18,
+        "path": ".gitignore",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 363,
+      "id": 363,
+      "level": "info",
+      "message": "OCR reported a file completion.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:49:17+00:00",
+      "truncated": false,
+      "type": "file.completed"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "output_activity",
+      "created_at": "2026-10-10T11:49:17+00:00",
+      "cursor": 364,
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 40,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "dropped": false,
+      "event_id": 364,
+      "id": 364,
+      "level": "info",
+      "message": "The parent observed bounded process output activity.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:49:17+00:00",
+      "truncated": false,
+      "type": "ocr.output_activity"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_completed",
+      "created_at": "2026-10-10T11:49:32+00:00",
+      "cursor": 365,
+      "data": {
+        "duration_ms": 45928,
+        "index": 16,
+        "ordinal": 17,
+        "path": ".dockerignore",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 365,
+      "id": 365,
+      "level": "info",
+      "message": "OCR reported a file completion.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:49:32+00:00",
+      "truncated": false,
+      "type": "file.completed"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "output_activity",
+      "created_at": "2026-10-10T11:49:32+00:00",
+      "cursor": 366,
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 41,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "dropped": false,
+      "event_id": 366,
+      "id": 366,
+      "level": "info",
+      "message": "The parent observed bounded process output activity.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:49:32+00:00",
+      "truncated": false,
+      "type": "ocr.output_activity"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "file_completed",
+      "created_at": "2026-10-10T11:50:30+00:00",
+      "cursor": 367,
+      "data": {
+        "duration_ms": 103296,
+        "index": 18,
+        "ordinal": 19,
+        "path": "Dockerfile",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "dropped": false,
+      "event_id": 367,
+      "id": 367,
+      "level": "info",
+      "message": "OCR reported a file completion.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:50:30+00:00",
+      "truncated": false,
+      "type": "file.completed"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "scan_inventory",
+      "created_at": "2026-10-10T11:50:30+00:00",
+      "cursor": 368,
+      "data": {
+        "candidates": 20,
+        "failed_files": 0,
+        "files_total": 20,
+        "reviewed_files": 20,
+        "session_id": "425722af-633e-45f3-a6c3-2b59315e834a",
+        "skipped_files": 0
+      },
+      "dropped": false,
+      "event_id": 368,
+      "id": 368,
+      "level": "info",
+      "message": "OCR reported scan inventory.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:50:30+00:00",
+      "truncated": false,
+      "type": "scan.inventory"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "output_activity",
+      "created_at": "2026-10-10T11:50:30+00:00",
+      "cursor": 369,
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 836926,
+        "structured_events": 43,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "dropped": false,
+      "event_id": 369,
+      "id": 369,
+      "level": "info",
+      "message": "The parent observed bounded process output activity.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:50:30+00:00",
+      "truncated": false,
+      "type": "ocr.output_activity"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "process_exited",
+      "created_at": "2026-10-10T11:50:30+00:00",
+      "cursor": 370,
+      "data": {
+        "exit_code": 0,
+        "stderr_bytes": 0,
+        "stdout_bytes": 836926,
+        "structured_events": 43,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "dropped": false,
+      "event_id": 370,
+      "id": 370,
+      "level": "info",
+      "message": "OpenCodeReview process exited.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:50:30+00:00",
+      "truncated": false,
+      "type": "ocr.exited"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "parse_started",
+      "created_at": "2026-10-10T11:50:30+00:00",
+      "cursor": 371,
+      "data": {},
+      "dropped": false,
+      "event_id": 371,
+      "id": 371,
+      "level": "info",
+      "message": "OpenCodeReview output parsing started.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "parsing",
+      "timestamp": "2026-10-10T11:50:30+00:00",
+      "truncated": false,
+      "type": "ocr.parse_started"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "parse_finished",
+      "created_at": "2026-10-10T11:50:30+00:00",
+      "cursor": 372,
+      "data": {
+        "comments": 49
+      },
+      "dropped": false,
+      "event_id": 372,
+      "id": 372,
+      "level": "info",
+      "message": "OpenCodeReview output parsing finished.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "parsing",
+      "timestamp": "2026-10-10T11:50:30+00:00",
+      "truncated": false,
+      "type": "ocr.parse_finished"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "phase_changed",
+      "created_at": "2026-10-10T11:50:30+00:00",
+      "cursor": 373,
+      "data": {},
+      "dropped": false,
+      "event_id": 373,
+      "id": 373,
+      "level": "info",
+      "message": "Scan entered a worker phase.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "worker",
+      "stage": "parsing",
+      "timestamp": "2026-10-10T11:50:30+00:00",
+      "truncated": false,
+      "type": "scan.phase"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "ocr_output_received",
+      "created_at": "2026-10-10T11:50:30+00:00",
+      "cursor": 374,
+      "data": {
+        "duration_ms": 320056,
+        "exit_code": 0,
+        "model": "ds.public.deepseek-v4-pro",
+        "session_id": "425722af-633e-45f3-a6c3-2b59315e834a",
+        "stderr_bytes": 0,
+        "stdout_bytes": 836926,
+        "timeout_seconds": 1800.0
+      },
+      "dropped": false,
+      "event_id": 374,
+      "id": 374,
+      "level": "info",
+      "message": "OCR output was received for bounded parsing.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "ocr",
+      "stage": "parsing",
+      "timestamp": "2026-10-10T11:50:30+00:00",
+      "truncated": false,
+      "type": "phase"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "progress_updated",
+      "created_at": "2026-10-10T11:50:30+00:00",
+      "cursor": 375,
+      "data": {
+        "failed_files": 0,
+        "percent": 100,
+        "reviewed_files": 20,
+        "skipped_files": 0,
+        "total_files": 20
+      },
+      "dropped": false,
+      "event_id": 375,
+      "id": 375,
+      "level": "info",
+      "message": "Scan progress updated.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "worker",
+      "stage": "parsing",
+      "timestamp": "2026-10-10T11:50:30+00:00",
+      "truncated": false,
+      "type": "progress"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "commit_recorded",
+      "created_at": "2026-10-10T11:50:30+00:00",
+      "cursor": 376,
+      "data": {
+        "commit_sha": "f16052dce83f05847133ec98f01c5193a41de7d8"
+      },
+      "dropped": false,
+      "event_id": 376,
+      "id": 376,
+      "level": "info",
+      "message": "The resolved commit was recorded.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "worker",
+      "stage": "parsing",
+      "timestamp": "2026-10-10T11:50:30+00:00",
+      "truncated": false,
+      "type": "scan.commit"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "phase_changed",
+      "created_at": "2026-10-10T11:50:30+00:00",
+      "cursor": 377,
+      "data": {},
+      "dropped": false,
+      "event_id": 377,
+      "id": 377,
+      "level": "info",
+      "message": "Scan entered a worker phase.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "worker",
+      "stage": "persisting",
+      "timestamp": "2026-10-10T11:50:30+00:00",
+      "truncated": false,
+      "type": "scan.phase"
+    },
+    {
+      "accepted": true,
+      "attempt": 1,
+      "code": "scan_completed",
+      "created_at": "2026-10-10T11:50:30+00:00",
+      "cursor": 378,
+      "data": {
+        "finding_count": 49,
+        "retryable": false,
+        "status": "completed"
+      },
+      "dropped": false,
+      "event_id": 378,
+      "id": 378,
+      "level": "info",
+      "message": "Scan completed.",
+      "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+      "schema_version": 1,
+      "source": "worker",
+      "stage": "completed",
+      "timestamp": "2026-10-10T11:50:30+00:00",
+      "truncated": false,
+      "type": "scan.completed"
+    }
+  ],
+  "events_next_cursor": 378,
+  "events_truncated": false,
+  "evidence": [
+    {
+      "code": "scan_created",
+      "data": {},
+      "event_id": 292,
+      "stage": "queued",
+      "timestamp": "2026-10-10T11:45:07+00:00"
+    },
+    {
+      "code": "claim_acquired",
+      "data": {
+        "attempt": 1
+      },
+      "event_id": 295,
+      "stage": "preparing",
+      "timestamp": "2026-10-10T11:45:08+00:00"
+    },
+    {
+      "code": "phase_changed",
+      "data": {},
+      "event_id": 296,
+      "stage": "git_fetching",
+      "timestamp": "2026-10-10T11:45:08+00:00"
+    },
+    {
+      "code": "phase_changed",
+      "data": {},
+      "event_id": 297,
+      "stage": "source_checking",
+      "timestamp": "2026-10-10T11:45:10+00:00"
+    },
+    {
+      "code": "source_checked",
+      "data": {
+        "total_files": 22
+      },
+      "event_id": 298,
+      "stage": "source_checking",
+      "timestamp": "2026-10-10T11:45:10+00:00"
+    },
+    {
+      "code": "commit_recorded",
+      "data": {
+        "commit_sha": "f16052dce83f05847133ec98f01c5193a41de7d8"
+      },
+      "event_id": 299,
+      "stage": "source_checking",
+      "timestamp": "2026-10-10T11:45:10+00:00"
+    },
+    {
+      "code": "phase_changed",
+      "data": {},
+      "event_id": 300,
+      "stage": "ocr_starting",
+      "timestamp": "2026-10-10T11:45:10+00:00"
+    },
+    {
+      "code": "ocr_starting",
+      "data": {
+        "capabilities": {
+          "event_protocol": true,
+          "file_progress": false,
+          "llm_requests": false
+        },
+        "deadline_at": "2026-10-10T12:15:10.272624+00:00",
+        "engine_commit": "072808b6b0b12a1408b31889539c03878eff0f61",
+        "event_protocol": true,
+        "model": "ds.public.deepseek-v4-pro",
+        "timeout_seconds": 1800.0
+      },
+      "event_id": 301,
+      "stage": "ocr_starting",
+      "timestamp": "2026-10-10T11:45:10+00:00"
+    },
+    {
+      "code": "phase_changed",
+      "data": {},
+      "event_id": 302,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:10+00:00"
+    },
+    {
+      "code": "ocr_running",
+      "data": {
+        "capabilities": {
+          "event_protocol": true,
+          "file_progress": false,
+          "llm_requests": false
+        },
+        "deadline_at": "2026-10-10T12:15:10.272624+00:00",
+        "engine_commit": "072808b6b0b12a1408b31889539c03878eff0f61",
+        "event_protocol": true,
+        "model": "ds.public.deepseek-v4-pro",
+        "timeout_seconds": 1800.0
+      },
+      "event_id": 303,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:10+00:00"
+    },
+    {
+      "code": "process_started",
+      "data": {
+        "pid": 22332
+      },
+      "event_id": 304,
+      "stage": "ocr_starting",
+      "timestamp": "2026-10-10T11:45:10+00:00"
+    },
+    {
+      "code": "session_started",
+      "data": {
+        "model": "ds.public.deepseek-v4-pro",
+        "pid": 22332,
+        "session_id": "425722af-633e-45f3-a6c3-2b59315e834a"
+      },
+      "event_id": 305,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:10+00:00"
+    },
+    {
+      "code": "output_activity",
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 1,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "event_id": 306,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:10+00:00"
+    },
+    {
+      "code": "scan_inventory",
+      "data": {
+        "candidates": 20,
+        "failed_files": 0,
+        "files_total": 20,
+        "reviewed_files": 0,
+        "session_id": "425722af-633e-45f3-a6c3-2b59315e834a",
+        "skipped_files": 0
+      },
+      "event_id": 307,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:10+00:00"
+    },
+    {
+      "code": "file_started",
+      "data": {
+        "index": 0,
+        "ordinal": 1,
+        "path": "openapi_specs/VAmPI.postman_collection.json",
+        "size_bytes": 19536,
+        "total": 20
+      },
+      "event_id": 308,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:10+00:00"
+    },
+    {
+      "code": "output_activity",
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 3,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "event_id": 309,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:12+00:00"
+    },
+    {
+      "code": "file_completed",
+      "data": {
+        "duration_ms": 9924,
+        "index": 0,
+        "ordinal": 1,
+        "path": "openapi_specs/VAmPI.postman_collection.json",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "event_id": 310,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:20+00:00"
+    },
+    {
+      "code": "file_started",
+      "data": {
+        "index": 1,
+        "ordinal": 2,
+        "path": "api_views/__init__.py",
+        "size_bytes": 0,
+        "total": 20
+      },
+      "event_id": 311,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:20+00:00"
+    },
+    {
+      "code": "file_started",
+      "data": {
+        "index": 2,
+        "ordinal": 3,
+        "path": "api_views/books.py",
+        "size_bytes": 3043,
+        "total": 20
+      },
+      "event_id": 312,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:20+00:00"
+    },
+    {
+      "code": "file_started",
+      "data": {
+        "index": 3,
+        "ordinal": 4,
+        "path": "api_views/json_schemas.py",
+        "size_bytes": 766,
+        "total": 20
+      },
+      "event_id": 313,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:20+00:00"
+    },
+    {
+      "code": "file_started",
+      "data": {
+        "index": 4,
+        "ordinal": 5,
+        "path": "api_views/main.py",
+        "size_bytes": 791,
+        "total": 20
+      },
+      "event_id": 314,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:20+00:00"
+    },
+    {
+      "code": "file_started",
+      "data": {
+        "index": 5,
+        "ordinal": 6,
+        "path": "api_views/users.py",
+        "size_bytes": 9257,
+        "total": 20
+      },
+      "event_id": 315,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:20+00:00"
+    },
+    {
+      "code": "file_started",
+      "data": {
+        "index": 6,
+        "ordinal": 7,
+        "path": "app.py",
+        "size_bytes": 536,
+        "total": 20
+      },
+      "event_id": 316,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:20+00:00"
+    },
+    {
+      "code": "file_started",
+      "data": {
+        "index": 7,
+        "ordinal": 8,
+        "path": "config.py",
+        "size_bytes": 920,
+        "total": 20
+      },
+      "event_id": 317,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:20+00:00"
+    },
+    {
+      "code": "file_started",
+      "data": {
+        "index": 8,
+        "ordinal": 9,
+        "path": "database/__init__.py",
+        "size_bytes": 0,
+        "total": 20
+      },
+      "event_id": 318,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:20+00:00"
+    },
+    {
+      "code": "output_activity",
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 12,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "event_id": 319,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:20+00:00"
+    },
+    {
+      "code": "file_completed",
+      "data": {
+        "duration_ms": 2514,
+        "index": 1,
+        "ordinal": 2,
+        "path": "api_views/__init__.py",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "event_id": 320,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:23+00:00"
+    },
+    {
+      "code": "file_started",
+      "data": {
+        "index": 9,
+        "ordinal": 10,
+        "path": "models/__init__.py",
+        "size_bytes": 0,
+        "total": 20
+      },
+      "event_id": 321,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:23+00:00"
+    },
+    {
+      "code": "output_activity",
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 14,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "event_id": 322,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:23+00:00"
+    },
+    {
+      "code": "file_completed",
+      "data": {
+        "duration_ms": 3661,
+        "index": 8,
+        "ordinal": 9,
+        "path": "database/__init__.py",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "event_id": 323,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:24+00:00"
+    },
+    {
+      "code": "file_started",
+      "data": {
+        "index": 10,
+        "ordinal": 11,
+        "path": "models/books_model.py",
+        "size_bytes": 952,
+        "total": 20
+      },
+      "event_id": 324,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:24+00:00"
+    },
+    {
+      "code": "output_activity",
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 16,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "event_id": 325,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:25+00:00"
+    },
+    {
+      "code": "file_completed",
+      "data": {
+        "duration_ms": 2309,
+        "index": 9,
+        "ordinal": 10,
+        "path": "models/__init__.py",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "event_id": 326,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:25+00:00"
+    },
+    {
+      "code": "file_started",
+      "data": {
+        "index": 11,
+        "ordinal": 12,
+        "path": "models/user_model.py",
+        "size_bytes": 3642,
+        "total": 20
+      },
+      "event_id": 327,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:25+00:00"
+    },
+    {
+      "code": "output_activity",
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 18,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "event_id": 328,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:27+00:00"
+    },
+    {
+      "code": "file_completed",
+      "data": {
+        "duration_ms": 25297,
+        "index": 6,
+        "ordinal": 7,
+        "path": "app.py",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "event_id": 329,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:45+00:00"
+    },
+    {
+      "code": "output_activity",
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 19,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "event_id": 330,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:45+00:00"
+    },
+    {
+      "code": "file_completed",
+      "data": {
+        "duration_ms": 31799,
+        "index": 3,
+        "ordinal": 4,
+        "path": "api_views/json_schemas.py",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "event_id": 331,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:52+00:00"
+    },
+    {
+      "code": "output_activity",
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 20,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "event_id": 332,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:45:52+00:00"
+    },
+    {
+      "code": "file_completed",
+      "data": {
+        "duration_ms": 61701,
+        "index": 10,
+        "ordinal": 11,
+        "path": "models/books_model.py",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "event_id": 333,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:46:25+00:00"
+    },
+    {
+      "code": "output_activity",
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 21,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "event_id": 334,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:46:25+00:00"
+    },
+    {
+      "code": "file_completed",
+      "data": {
+        "duration_ms": 70932,
+        "index": 4,
+        "ordinal": 5,
+        "path": "api_views/main.py",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "event_id": 335,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:46:31+00:00"
+    },
+    {
+      "code": "output_activity",
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 22,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "event_id": 336,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:46:31+00:00"
+    },
+    {
+      "code": "file_completed",
+      "data": {
+        "duration_ms": 66849,
+        "index": 11,
+        "ordinal": 12,
+        "path": "models/user_model.py",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "event_id": 337,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:46:32+00:00"
+    },
+    {
+      "code": "output_activity",
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 23,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "event_id": 338,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:46:33+00:00"
+    },
+    {
+      "code": "file_completed",
+      "data": {
+        "duration_ms": 90020,
+        "index": 2,
+        "ordinal": 3,
+        "path": "api_views/books.py",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "event_id": 339,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:46:50+00:00"
+    },
+    {
+      "code": "output_activity",
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 24,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "event_id": 340,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:46:50+00:00"
+    },
+    {
+      "code": "file_completed",
+      "data": {
+        "duration_ms": 93281,
+        "index": 7,
+        "ordinal": 8,
+        "path": "config.py",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "event_id": 341,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:46:53+00:00"
+    },
+    {
+      "code": "output_activity",
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 25,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "event_id": 342,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:46:53+00:00"
+    },
+    {
+      "code": "file_completed",
+      "data": {
+        "duration_ms": 128506,
+        "index": 5,
+        "ordinal": 6,
+        "path": "api_views/users.py",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "event_id": 343,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:47:29+00:00"
+    },
+    {
+      "code": "file_started",
+      "data": {
+        "index": 12,
+        "ordinal": 13,
+        "path": "docker-compose.yaml",
+        "size_bytes": 301,
+        "total": 20
+      },
+      "event_id": 344,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:47:29+00:00"
+    },
+    {
+      "code": "output_activity",
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 27,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "event_id": 345,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:47:29+00:00"
+    },
+    {
+      "code": "file_completed",
+      "data": {
+        "duration_ms": 6413,
+        "index": 12,
+        "ordinal": 13,
+        "path": "docker-compose.yaml",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "event_id": 346,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:47:35+00:00"
+    },
+    {
+      "code": "file_started",
+      "data": {
+        "index": 13,
+        "ordinal": 14,
+        "path": ".github/FUNDING.yml",
+        "size_bytes": 14,
+        "total": 20
+      },
+      "event_id": 347,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:47:35+00:00"
+    },
+    {
+      "code": "file_started",
+      "data": {
+        "index": 14,
+        "ordinal": 15,
+        "path": ".github/workflows/docker-image.yml",
+        "size_bytes": 702,
+        "total": 20
+      },
+      "event_id": 348,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:47:35+00:00"
+    },
+    {
+      "code": "file_started",
+      "data": {
+        "index": 15,
+        "ordinal": 16,
+        "path": "openapi_specs/openapi3.yml",
+        "size_bytes": 19770,
+        "total": 20
+      },
+      "event_id": 349,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:47:35+00:00"
+    },
+    {
+      "code": "output_activity",
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 31,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "event_id": 350,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:47:35+00:00"
+    },
+    {
+      "code": "file_completed",
+      "data": {
+        "duration_ms": 13400,
+        "index": 13,
+        "ordinal": 14,
+        "path": ".github/FUNDING.yml",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "event_id": 351,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:47:48+00:00"
+    },
+    {
+      "code": "output_activity",
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 32,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "event_id": 352,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:47:48+00:00"
+    },
+    {
+      "code": "file_completed",
+      "data": {
+        "duration_ms": 64530,
+        "index": 15,
+        "ordinal": 16,
+        "path": "openapi_specs/openapi3.yml",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "event_id": 353,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:48:39+00:00"
+    },
+    {
+      "code": "output_activity",
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 33,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "event_id": 354,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:48:39+00:00"
+    },
+    {
+      "code": "file_completed",
+      "data": {
+        "duration_ms": 71589,
+        "index": 14,
+        "ordinal": 15,
+        "path": ".github/workflows/docker-image.yml",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "event_id": 355,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:48:47+00:00"
+    },
+    {
+      "code": "file_started",
+      "data": {
+        "index": 16,
+        "ordinal": 17,
+        "path": ".dockerignore",
+        "size_bytes": 55,
+        "total": 20
+      },
+      "event_id": 356,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:48:47+00:00"
+    },
+    {
+      "code": "file_started",
+      "data": {
+        "index": 17,
+        "ordinal": 18,
+        "path": ".gitignore",
+        "size_bytes": 1060,
+        "total": 20
+      },
+      "event_id": 357,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:48:47+00:00"
+    },
+    {
+      "code": "file_started",
+      "data": {
+        "index": 18,
+        "ordinal": 19,
+        "path": "Dockerfile",
+        "size_bytes": 466,
+        "total": 20
+      },
+      "event_id": 358,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:48:47+00:00"
+    },
+    {
+      "code": "file_started",
+      "data": {
+        "index": 19,
+        "ordinal": 20,
+        "path": "LICENSE",
+        "size_bytes": 1063,
+        "total": 20
+      },
+      "event_id": 359,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:48:47+00:00"
+    },
+    {
+      "code": "output_activity",
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 38,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "event_id": 360,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:48:47+00:00"
+    },
+    {
+      "code": "file_completed",
+      "data": {
+        "duration_ms": 6449,
+        "index": 19,
+        "ordinal": 20,
+        "path": "LICENSE",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "event_id": 361,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:48:53+00:00"
+    },
+    {
+      "code": "output_activity",
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 39,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "event_id": 362,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:48:53+00:00"
+    },
+    {
+      "code": "file_completed",
+      "data": {
+        "duration_ms": 30818,
+        "index": 17,
+        "ordinal": 18,
+        "path": ".gitignore",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "event_id": 363,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:49:17+00:00"
+    },
+    {
+      "code": "output_activity",
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 40,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "event_id": 364,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:49:17+00:00"
+    },
+    {
+      "code": "file_completed",
+      "data": {
+        "duration_ms": 45928,
+        "index": 16,
+        "ordinal": 17,
+        "path": ".dockerignore",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "event_id": 365,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:49:32+00:00"
+    },
+    {
+      "code": "output_activity",
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 0,
+        "structured_events": 41,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "event_id": 366,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:49:32+00:00"
+    },
+    {
+      "code": "file_completed",
+      "data": {
+        "duration_ms": 103296,
+        "index": 18,
+        "ordinal": 19,
+        "path": "Dockerfile",
+        "reviewed_files": 1,
+        "total": 20
+      },
+      "event_id": 367,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:50:30+00:00"
+    },
+    {
+      "code": "scan_inventory",
+      "data": {
+        "candidates": 20,
+        "failed_files": 0,
+        "files_total": 20,
+        "reviewed_files": 20,
+        "session_id": "425722af-633e-45f3-a6c3-2b59315e834a",
+        "skipped_files": 0
+      },
+      "event_id": 368,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:50:30+00:00"
+    },
+    {
+      "code": "output_activity",
+      "data": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 836926,
+        "structured_events": 43,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "event_id": 369,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:50:30+00:00"
+    },
+    {
+      "code": "process_exited",
+      "data": {
+        "exit_code": 0,
+        "stderr_bytes": 0,
+        "stdout_bytes": 836926,
+        "structured_events": 43,
+        "structured_events_dropped": 0,
+        "structured_events_rejected": 0
+      },
+      "event_id": 370,
+      "stage": "ocr_running",
+      "timestamp": "2026-10-10T11:50:30+00:00"
+    },
+    {
+      "code": "parse_started",
+      "data": {},
+      "event_id": 371,
+      "stage": "parsing",
+      "timestamp": "2026-10-10T11:50:30+00:00"
+    },
+    {
+      "code": "parse_finished",
+      "data": {
+        "comments": 49
+      },
+      "event_id": 372,
+      "stage": "parsing",
+      "timestamp": "2026-10-10T11:50:30+00:00"
+    },
+    {
+      "code": "phase_changed",
+      "data": {},
+      "event_id": 373,
+      "stage": "parsing",
+      "timestamp": "2026-10-10T11:50:30+00:00"
+    },
+    {
+      "code": "ocr_output_received",
+      "data": {
+        "duration_ms": 320056,
+        "exit_code": 0,
+        "model": "ds.public.deepseek-v4-pro",
+        "session_id": "425722af-633e-45f3-a6c3-2b59315e834a",
+        "stderr_bytes": 0,
+        "stdout_bytes": 836926,
+        "timeout_seconds": 1800.0
+      },
+      "event_id": 374,
+      "stage": "parsing",
+      "timestamp": "2026-10-10T11:50:30+00:00"
+    },
+    {
+      "code": "progress_updated",
+      "data": {
+        "failed_files": 0,
+        "percent": 100,
+        "reviewed_files": 20,
+        "skipped_files": 0,
+        "total_files": 20
+      },
+      "event_id": 375,
+      "stage": "parsing",
+      "timestamp": "2026-10-10T11:50:30+00:00"
+    },
+    {
+      "code": "commit_recorded",
+      "data": {
+        "commit_sha": "f16052dce83f05847133ec98f01c5193a41de7d8"
+      },
+      "event_id": 376,
+      "stage": "parsing",
+      "timestamp": "2026-10-10T11:50:30+00:00"
+    },
+    {
+      "code": "phase_changed",
+      "data": {},
+      "event_id": 377,
+      "stage": "persisting",
+      "timestamp": "2026-10-10T11:50:30+00:00"
+    },
+    {
+      "code": "scan_completed",
+      "data": {
+        "finding_count": 49,
+        "retryable": false,
+        "status": "completed"
+      },
+      "event_id": 378,
+      "stage": "completed",
+      "timestamp": "2026-10-10T11:50:30+00:00"
+    }
+  ],
+  "expired_event_count": 0,
+  "observation": {
+    "activity_state": "completed",
+    "capabilities": {
+      "event_protocol": true,
+      "file_progress": true,
+      "llm_requests": false
+    },
+    "coverage": {
+      "failed": 0,
+      "percent": 100,
+      "reviewed": 20,
+      "skipped": 0,
+      "total": 20
+    },
+    "deadline_at": "2026-10-10T12:15:10Z",
+    "dropped_event_count": 0,
+    "elapsed_seconds": 323.0,
+    "error_summary": {
+      "code": null,
+      "message": null,
+      "retryable": null,
+      "source": null,
+      "suggestion": null
+    },
+    "event_count": 85,
+    "history_available": true,
+    "last_output_at": "2026-10-10T11:50:30Z",
+    "last_progress_at": "2026-10-10T11:50:30Z",
+    "report_ready": true,
+    "stage": "completed",
+    "stage_elapsed_seconds": 0.0,
+    "stage_started_at": "2026-10-10T11:50:30Z",
+    "truncated_event_count": 0,
+    "warnings": [],
+    "worker_heartbeat_at": "2026-10-10T11:50:30Z"
+  },
+  "phase": "completed",
+  "recent_errors": [],
+  "ref": "master",
+  "repository_url": "https://github.com/erev0s/VAmPI.git",
+  "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+  "schema_version": 1,
+  "status": "completed",
+  "suggestions": [],
+  "summary": {
+    "attempt": 1,
+    "dropped_event_count": 0,
+    "event_count": 85,
+    "history_available": true,
+    "report_ready": true,
+    "stage": "completed",
+    "status": "completed",
+    "truncated_event_count": 0
+  }
+}

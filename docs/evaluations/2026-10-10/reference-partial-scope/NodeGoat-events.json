@@ -1,0 +1,22 @@
+[
+  {
+    "schema_version": 1,
+    "event_id": 2,
+    "timestamp": "2026-10-10T11:31:41Z",
+    "id": 2,
+    "cursor": 2,
+    "scan_id": "b7301224fadb400182856b6f20c4a3d7",
+    "attempt": 0,
+    "source": "api",
+    "type": "scan.created",
+    "stage": "queued",
+    "level": "info",
+    "code": "scan_created",
+    "message": "Scan accepted and queued.",
+    "data": {},
+    "created_at": "2026-10-10T11:31:41Z",
+    "truncated": false,
+    "accepted": true,
+    "dropped": false
+  }
+]

@@ -1,0 +1,20 @@
+{
+  "argus_git_head": "764baae730cd59f46267be916924bf3fc6ce09bf",
+  "argus_python_sources_sha256": "c40692cba1d8c47e7b19277d390761d17902192229fe989f9c4ab50e7c51875e",
+  "engine_commit": "072808b6b0b12a1408b31889539c03878eff0f61",
+  "model": "ds.public.deepseek-v4-pro",
+  "include": [],
+  "exclude": [],
+  "background": null,
+  "aggregate_token_budget": 0,
+  "process_timeout_seconds": 1800,
+  "parallel_files": 8,
+  "global_parallel_scans": 1,
+  "target_code_executed": false,
+  "formal_scan_ids": {
+    "VAmPI": "1371b4ed88e747a1bc75de3eb74f95d7",
+    "NodeGoat": "5af058937a134c6791dfd94a95b21a6a",
+    "WebGoat": "73d27937e980444e8d32d01f65d575df"
+  },
+  "old_partial_scope_results_used_as_formal_evidence": false
+}

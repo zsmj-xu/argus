@@ -104,11 +104,16 @@ def test_api_separate_worker_git_events_and_reports(tmp_path: Path, monkeypatch,
         monkeypatch.setenv("ARGUS_API_KEY", "test-service-key")
         client = TestClient(create_app(api_store))
         auth = {"Authorization": "Bearer test-service-key"}
+        branch = subprocess.check_output(["git", "-C", str(repo), "branch", "--show-current"], text=True).strip()
+        project = client.post(
+            "/v1/projects",
+            headers=auth,
+            json={"name": "Synthetic", "branch": branch, "repository_url": f"git://127.0.0.1:{port}/repository"},
+        ).json()
         created = client.post(
-            "/v1/scans",
+            f"/v1/projects/{project['id']}/scans",
             headers=auth,
             json={
-                "repository_url": f"git://127.0.0.1:{port}/repository",
                 "source_disclosure_confirmed": True,
             },
         )
@@ -191,12 +196,19 @@ def test_api_separate_worker_git_events_and_reports(tmp_path: Path, monkeypatch,
         assert not Path(home_marker.read_text()).exists()
         reopened = TestClient(create_app(ScanStore(tmp_path / "shared.sqlite3")))
         assert reopened.get(f"/v1/scans/{scan_id}/events", headers=auth).json() == events
-        missing = client.post(
-            "/v1/scans",
+        missing_project = client.post(
+            "/v1/projects",
             headers=auth,
             json={
+                "name": "Missing branch",
                 "repository_url": f"git://127.0.0.1:{port}/repository",
-                "ref": "nonexistent-fixture-ref",
+                "branch": "nonexistent-fixture-ref",
+            },
+        ).json()
+        missing = client.post(
+            f"/v1/projects/{missing_project['id']}/scans",
+            headers=auth,
+            json={
                 "source_disclosure_confirmed": True,
             },
         )

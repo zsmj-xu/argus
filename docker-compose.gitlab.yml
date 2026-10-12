@@ -1,0 +1,14 @@
+services:
+  worker:
+    environment:
+      ARGUS_GITLAB_HOST: ${ARGUS_GITLAB_HOST:?set ARGUS_GITLAB_HOST}
+      ARGUS_GITLAB_USERNAME: ${ARGUS_GITLAB_USERNAME:?set ARGUS_GITLAB_USERNAME}
+      ARGUS_GITLAB_TOKEN_FILE: /run/secrets/gitlab_token
+    secrets:
+      - source: gitlab_token
+        uid: "10001"
+        mode: 0400
+
+secrets:
+  gitlab_token:
+    environment: ARGUS_GITLAB_TOKEN

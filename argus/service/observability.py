@@ -38,6 +38,9 @@ EVENT_DATA_WHITELIST = frozenset(
         "available",
         "bytes",
         "cache_read_tokens",
+        "cache_write_tokens",
+        "requests",
+        "missing_usage_requests",
         "candidates",
         "capabilities",
         "commit_sha",
@@ -132,6 +135,9 @@ _NUMERIC_DATA_KEYS = frozenset(
         "attempt",
         "bytes",
         "cache_read_tokens",
+        "cache_write_tokens",
+        "requests",
+        "missing_usage_requests",
         "candidates",
         "comments",
         "count",
@@ -608,6 +614,7 @@ _SESSION_TYPES = frozenset({"session.started"})
 _TOOL_TYPES = frozenset({"tool.started", "tool.completed", "tool.failed"})
 _CHILD_PROTOCOL_TYPES = frozenset(
     {
+        "usage.updated",
         "scan.inventory",
         "session.started",
         "file.started",
@@ -761,7 +768,14 @@ def structured_event_update(event: Mapping[str, Any]) -> StructuredEventUpdate |
     if source not in _OCR_SOURCES:
         return None
     recognized = (
-        event_type in _PROGRESS_TYPES | _OUTPUT_TYPES | _LLM_TYPES | _SESSION_TYPES | _TOOL_TYPES | _OCR_PARENT_TYPES
+        event_type
+        in _PROGRESS_TYPES
+        | _OUTPUT_TYPES
+        | _LLM_TYPES
+        | _SESSION_TYPES
+        | _TOOL_TYPES
+        | _OCR_PARENT_TYPES
+        | {"usage.updated"}
     )
     if not recognized:
         return None

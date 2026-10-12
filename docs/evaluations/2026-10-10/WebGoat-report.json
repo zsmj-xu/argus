@@ -1,0 +1,96 @@
+{
+  "findings": [],
+  "scan": {
+    "attempt": 1,
+    "background": null,
+    "base_commit": null,
+    "commit_sha": "044948d057b249735be2bfc14eccc9e3dc2eac34",
+    "created_at": "2026-10-10T11:45:07Z",
+    "error": "ocr_timeout",
+    "exclude": [],
+    "finding_count": 0,
+    "finished_at": "2026-10-10T12:41:51Z",
+    "id": "73d27937e980444e8d32d01f65d575df",
+    "idempotency_key": "github-full-default-evaluation-20261010-WebGoat",
+    "include": [],
+    "metadata": {
+      "coverage_total_known": false,
+      "ocr_capabilities": {
+        "event_callback": true,
+        "event_protocol": true,
+        "file_progress": false,
+        "llm_requests": false,
+        "pipe_events": true
+      },
+      "ocr_coverage": null,
+      "ocr_duration_ms": 1800039,
+      "ocr_engine": "opencodereview",
+      "ocr_engine_commit": "072808b6b0b12a1408b31889539c03878eff0f61",
+      "ocr_event_protocol": true,
+      "ocr_exit_code": -9,
+      "ocr_expected_deadline_at": "2026-10-10T12:41:50.928164+00:00",
+      "ocr_expected_deadline_seconds": 1800.0,
+      "ocr_llm": {},
+      "ocr_outcome": null,
+      "ocr_output_language": "zh-CN",
+      "ocr_scan_schema_version": null,
+      "ocr_status": "failed",
+      "ocr_summary": {},
+      "ocr_timeout_seconds": 1800.0,
+      "ocr_warning_count": 0,
+      "ocr_warnings": []
+    },
+    "observation": {
+      "activity_state": "failed",
+      "capabilities": {
+        "event_protocol": true,
+        "file_progress": true,
+        "llm_requests": false
+      },
+      "coverage": {
+        "failed": 1,
+        "percent": 20,
+        "reviewed": 141,
+        "skipped": 0,
+        "total": 713
+      },
+      "deadline_at": "2026-10-10T12:41:50Z",
+      "dropped_event_count": 0,
+      "elapsed_seconds": 3404.0,
+      "error_summary": {
+        "code": "process_exited",
+        "message": "OpenCodeReview process exited.",
+        "retryable": true,
+        "source": "ocr",
+        "suggestion": "Review the recent diagnostics and retry the scan if the input or dependency is available."
+      },
+      "event_count": 455,
+      "history_available": true,
+      "last_output_at": "2026-10-10T12:41:47Z",
+      "last_progress_at": "2026-10-10T12:41:51Z",
+      "report_ready": false,
+      "stage": "failed",
+      "stage_elapsed_seconds": 0.0,
+      "stage_started_at": "2026-10-10T12:41:51Z",
+      "truncated_event_count": 0,
+      "warnings": [],
+      "worker_heartbeat_at": "2026-10-10T12:41:30Z"
+    },
+    "phase": "failed",
+    "progress": {
+      "failed_files": 1,
+      "percent": 20,
+      "reviewed_files": 141,
+      "skipped_files": 0,
+      "total_files": 713
+    },
+    "project_id": "19eb7c34c6f340cc888638042af9a201",
+    "ref": "main",
+    "repository_url": "https://github.com/WebGoat/WebGoat.git",
+    "scan_type": "full",
+    "session_id": null,
+    "started_at": "2026-10-10T12:11:30Z",
+    "status": "failed",
+    "updated_at": "2026-10-10T12:41:51Z"
+  }
+}

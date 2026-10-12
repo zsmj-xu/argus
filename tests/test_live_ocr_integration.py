@@ -22,10 +22,12 @@ from argus.service.store import ScanStore
 
 class _FakeOpenAIHandler(BaseHTTPRequestHandler):
     requests = 0
+    bodies: list[dict] = []
 
     def do_POST(self) -> None:  # noqa: N802
         length = int(self.headers.get("Content-Length", "0"))
         body = json.loads(self.rfile.read(length))
+        type(self).bodies.append(body)
         type(self).requests += 1
         has_tool_result = any(message.get("role") == "tool" for message in body.get("messages", []))
         if has_tool_result:
@@ -187,11 +189,16 @@ def test_argus_api_worker_uses_real_ocr_and_local_llm_stub(tmp_path: Path, monke
     client = TestClient(create_app(store))
     auth = {"Authorization": "Bearer test-service-key"}
     try:
+        branch = subprocess.check_output(["git", "-C", str(repo), "branch", "--show-current"], text=True).strip()
+        project = client.post(
+            "/v1/projects",
+            headers=auth,
+            json={"name": "Real OCR fixture", "branch": branch, "repository_url": f"git://127.0.0.1:{port}/repository"},
+        ).json()
         created = client.post(
-            "/v1/scans",
+            f"/v1/projects/{project['id']}/scans",
             headers=auth,
             json={
-                "repository_url": f"git://127.0.0.1:{port}/repository",
                 "source_disclosure_confirmed": True,
             },
         )
@@ -234,7 +241,7 @@ def test_argus_api_worker_uses_real_ocr_and_local_llm_stub(tmp_path: Path, monke
             "skipped": 0,
             "percent": 100,
         }
-        assert scan["metadata"]["ocr_engine_commit"] == "072808b6b0b12a1408b31889539c03878eff0f61"
+        assert scan["metadata"]["ocr_engine_commit"] == "16f10f1efeb69d6f3cd2391511e225ad54809e2e"
         assert scan["metadata"]["ocr_scan_schema_version"] == "ocr.scan-result/v1"
         assert scan["metadata"]["ocr_outcome"] == "complete"
         events = client.get(f"/v1/scans/{scan_id}/events", headers=auth).json()["items"]

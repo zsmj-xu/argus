@@ -1,0 +1,111 @@
+{
+  "scan_id": "73d27937e980444e8d32d01f65d575df",
+  "commit": "044948d057b249735be2bfc14eccc9e3dc2eac34",
+  "scope": {
+    "include": [],
+    "exclude": [],
+    "background": null
+  },
+  "status": "failed",
+  "error": "ocr_timeout",
+  "duration_ms": 1800039,
+  "coverage_source": "persisted structured events; terminal scan_result absent",
+  "coverage": {
+    "total": 713,
+    "reviewed": 141,
+    "failed": 1,
+    "skipped": 0,
+    "unfinished": 571,
+    "interrupted": 8,
+    "not_started": 563
+  },
+  "normalized_findings": 0,
+  "terminal_schema": null,
+  "tokens": null,
+  "completed_extensions": {
+    ".html": 73,
+    ".css": 33,
+    ".java": 35
+  },
+  "failed_files": [
+    {
+      "total": 713,
+      "path": "src/main/resources/lessons/spoofcookie/lessonSolutions/html/SpoofCookie.html",
+      "duration_ms": 236210,
+      "failed_files": 1,
+      "ordinal": 75,
+      "index": 74
+    }
+  ],
+  "known_cases": [
+    {
+      "id": "WG01",
+      "file": "src/main/java/org/owasp/webgoat/lessons/sqlinjection/introduction/SqlInjectionLesson5a.java",
+      "started": false,
+      "completed": false,
+      "delivered_match": false
+    },
+    {
+      "id": "WG02",
+      "file": "src/main/java/org/owasp/webgoat/lessons/sqlinjection/introduction/SqlInjectionLesson5b.java",
+      "started": false,
+      "completed": false,
+      "delivered_match": false
+    },
+    {
+      "id": "WG03",
+      "file": "src/main/java/org/owasp/webgoat/lessons/sqlinjection/advanced/SqlInjectionLesson6a.java",
+      "started": false,
+      "completed": false,
+      "delivered_match": false
+    },
+    {
+      "id": "WG04",
+      "file": "src/main/java/org/owasp/webgoat/lessons/sqlinjection/mitigation/Servers.java",
+      "started": false,
+      "completed": false,
+      "delivered_match": false
+    },
+    {
+      "id": "WG05",
+      "file": "src/main/java/org/owasp/webgoat/lessons/xxe/CommentsCache.java",
+      "started": false,
+      "completed": false,
+      "delivered_match": false
+    },
+    {
+      "id": "WG06",
+      "file": "src/main/java/org/owasp/webgoat/lessons/deserialization/InsecureDeserializationTask.java",
+      "started": false,
+      "completed": false,
+      "delivered_match": false
+    },
+    {
+      "id": "WG07",
+      "file": "src/main/java/org/owasp/webgoat/lessons/idor/IDORViewOtherProfile.java",
+      "started": false,
+      "completed": false,
+      "delivered_match": false
+    },
+    {
+      "id": "WG08",
+      "file": "src/main/java/org/owasp/webgoat/lessons/idor/IDOREditOtherProfile.java",
+      "started": false,
+      "completed": false,
+      "delivered_match": false
+    },
+    {
+      "id": "WG09",
+      "file": "src/main/java/org/owasp/webgoat/lessons/sqlinjection/mitigation/SqlOnlyInputValidationOnKeywords.java",
+      "started": false,
+      "completed": false,
+      "delivered_match": false
+    }
+  ],
+  "end_to_end_known_case_delivery": {
+    "matched": 0,
+    "total": 9
+  },
+  "model_inference_recall": null,
+  "limits": "No core anchor was started. Task failed; zero delivered findings does not establish absence of vulnerabilities or zero model inference recall."
+}

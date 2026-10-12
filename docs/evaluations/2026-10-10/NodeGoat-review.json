@@ -1,0 +1,42 @@
+{
+  "scan_id": "5af058937a134c6791dfd94a95b21a6a",
+  "commit": "c5cb68a7084e4ae7dcc60e6a98768720a81841e8",
+  "scope": {"include": [], "exclude": [], "background": null},
+  "coverage": {"total":94,"reviewed":94,"failed":0,"skipped":0},
+  "raw_findings":325,
+  "categories":{"security":80,"bug":101,"maintainability":101,"documentation":17,"test":7,"style":15,"other":2,"performance":2},
+  "expected_case_recall":{"matched":10,"total":10},
+  "known_case_matches": {
+    "NG01":["fa4f3c019c4950d6c88055886efa3e72"],
+    "NG02":["9103a5c39966497acd2992d3d874920d","125dda78b629b51f2fbd44139b56c4aa"],
+    "NG03":["81e7528edbc862d52ba968d9fd6868c7","3f9e0d38501a3e2705fd60c646c188a3"],
+    "NG04":["2326b26a73741a040857d3e9b657034f","994e531c9bbdd03c6fa73197ff4b15bc"],
+    "NG05":["306b0674184eef38fc92f62c23d78217","2458c2cee106b98512d2dbd6454903fe","1d90e351444f92859ae73eeecaf70ac6"],
+    "NG06":["9254a0c65cd7de0e5ba92fef221887dc","7866c6b1d0d1727c5a13af82240c8ae1"],
+    "NG07":["8536a6b3003b539761044a7b4b098044"],
+    "NG08":["96ffd0007c192d0496e5f9555b8ae0ac","127946c3935ee615a45f5d7644f4b35e","ae7b271821a7504182f220bf4117b1f6","b89e64c289dac2671a3814e06166c5bd"],
+    "NG09":["980fc7a4a5108d1aaf33c11f549ce064"],
+    "NG10":["99b6b50f6d51de888c884b6e9b567927"]
+  },
+  "negative_controls":{"NC04":"No incorrect NoSQL operator-injection claim against integer-parsed getUserById; threshold $where injection is a different, real issue."},
+  "duplicates_or_same_root_reports": [
+    {"root":"NoSQL threshold injection","ids":["9103a5c39966497acd2992d3d874920d","125dda78b629b51f2fbd44139b56c4aa"],"note":"DAO sink and route source are one unsafe threshold flow."},
+    {"root":"allocation IDOR","ids":["81e7528edbc862d52ba968d9fd6868c7","3f9e0d38501a3e2705fd60c646c188a3"],"note":"Same path-controlled object access described in handler and route."},
+    {"root":"benefits admin authorization","ids":["306b0674184eef38fc92f62c23d78217","2458c2cee106b98512d2dbd6454903fe","1d90e351444f92859ae73eeecaf70ac6"],"note":"Missing server-side admin check echoed in route, handler and template; hidden-field mutability alone is not a new vulnerability."},
+    {"root":"plaintext password persistence","ids":["9254a0c65cd7de0e5ba92fef221887dc","7866c6b1d0d1727c5a13af82240c8ae1"],"note":"Storage and direct comparison describe the same password-handling flaw."},
+    {"root":"missing global CSRF protection","ids":["96ffd0007c192d0496e5f9555b8ae0ac","127946c3935ee615a45f5d7644f4b35e","ae7b271821a7504182f220bf4117b1f6","b89e64c289dac2671a3814e06166c5bd"],"note":"Several forms repeat the global missing csurf concern; browser/SameSite and origin conditions must be stated."}
+  ],
+  "confirmed_false_claims": [
+    {"id":"78d568b8a214a2f3ada9c63491d62bae","reason":"Login template password value is never filled with a password by current handlers. displayLoginPage and both error branches explicitly pass password as an empty string. Finding infers sensitive echo solely from the template placeholder.","source_files":["app/routes/session.js:45-48","app/routes/session.js:82-85","app/routes/session.js:90-94"]},
+    {"id":"000631edf2b3b6359f9d6e3f9580e4bc","reason":"Wrong source-to-sink variable: profile's href uses firstNameSafeString, not doc.website. The website value is placed in a text input. An actual firstName href concern is separately reported at a04467f77eb027b5887c1506ed00615d.","source_files":["app/routes/profile.js:28","app/views/profile.html:70","app/views/profile.html:78"]},
+    {"id":"3350b4e671c22058fca61bc189417902","component_only":true,"reason":"Claim that lack of explicit httpOnly makes session cookie readable by XSS is false for locked express-session 1.15.6, whose Cookie constructor sets httpOnly=true. Other secure/resave concerns in the same finding need separate judgment.","source":"https://github.com/expressjs/session/blob/v1.15.6/session/cookie.js"},
+    {"id":"c3db69b1c40c41fef3b0f498ded03b8b","reason":"The live-reload string is a development-only trusted script assembled from browser-normalized location.host. No attacker-controlled markup input is identified; document.write and its performance downside alone do not establish script injection.","source_files":["config/env/development.js:9-13"]}
+  ],
+  "severity_qualification": [
+    {"id":"980fc7a4a5108d1aaf33c11f549ce064","reported":"critical","note":"Open redirect is present, but this report shows phishing/navigation impact, not direct RCE, credential disclosure or privilege escalation. Critical ranking is not supported by its evidence."},
+    {"id":"96ffd0007c192d0496e5f9555b8ae0ac","note":"CSRF depends on the relevant browser and same-site/origin situation; absent token middleware does not prove every cross-site attack succeeds."}
+  ],
+  "other_findings_not_fully_validated": "Library DOM/eval primitives need application call chains; package age/CVE claims need dependency/advisory checks; tutorial snippets and test credentials are not automatically production exposure. Self-profile form echo does not establish a recipient outside the authenticated owner. No overall precision is claimed across all 325 findings.",
+  "location_warning": "The completed v1 result carries one invalid_output warning; inspect source locations before acting. Complete file accounting is distinct from finding accuracy and line-location quality.",
+  "limits":"Known-case matching plus targeted static review only. No target app or exploit execution. Old partial-scope results are not used as evidence."
+}

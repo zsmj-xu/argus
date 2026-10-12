@@ -1,0 +1,54 @@
+{
+  "scan_id": "1371b4ed88e747a1bc75de3eb74f95d7",
+  "commit": "f16052dce83f05847133ec98f01c5193a41de7d8",
+  "scope": {"include": [], "exclude": [], "background": null},
+  "method": "Human static review of all 18 security-category findings, targeted review of critical/version-dependent nonsecurity claims, and code-based matching to 9 predeclared positive anchors. Remaining general code-review findings are categorized, not claimed individually validated. No target execution.",
+  "known_case_matches": {
+    "VP01": ["fe87caeb5e091395841663c4ff6b5e94"],
+    "VP02": [],
+    "VP03": ["28b8d9432cf98965af2cb78181d10b32"],
+    "VP04": ["6b7bde7dcab2cf5b831c816d0039813a"],
+    "VP05": ["73bd6e16f400c78db20e71763293a737", "e72b232ba36cb2bbbd6565502abbffef"],
+    "VP06": [],
+    "VP07": ["6d4d9687a7ce17da687e5f3cb9a37396"],
+    "VP08": ["c97a3f1756ada4802153727532ea204b"],
+    "VP09": ["da703c336a247406f6fb9fba58e84c4e", "f8a330fb77c73b85a42d42e7928d489a"]
+  },
+  "expected_case_recall": {"matched": 7, "total": 9},
+  "negative_controls": {"NC01": "no incorrect SQL injection claim against secure ORM branch", "NC02": "no incorrect IDOR claim against owner-scoped book branch", "NC03": "no normal-user admin-delete bypass claim; reported missing-user exception is unrelated"},
+  "security_unique_static_findings": [
+    {"id":"1d48c96e0b39b506465f0c6a1daf5d7b","issue":"debugger exposed on all interfaces","qualification":"Debug console reachable depending on deployment; PIN protection and access conditions matter. Not an unconditional remote RCE proof."},
+    {"id":"28b8d9432cf98965af2cb78181d10b32","issue":"book object authorization missing in vulnerable branch"},
+    {"id":"6b7bde7dcab2cf5b831c816d0039813a","issue":"admin mass assignment at registration"},
+    {"id":"6d4d9687a7ce17da687e5f3cb9a37396","issue":"nested email regex on unbounded input"},
+    {"id":"73bd6e16f400c78db20e71763293a737","issue":"unauthenticated debug password disclosure"},
+    {"id":"8145998b33366dcaa2e4aae2ed3890fc","issue":"weak default admin credentials in database initializer","qualification":"Reachable via the documented createdb endpoint; intentional training seed, not an unknown production credential."},
+    {"id":"c97a3f1756ada4802153727532ea204b","issue":"predictable signing secret used for HS256"},
+    {"id":"da703c336a247406f6fb9fba58e84c4e","issue":"plaintext password persistence"},
+    {"id":"fe87caeb5e091395841663c4ff6b5e94","issue":"raw username concatenated into SQL"}
+  ],
+  "duplicate_security_findings": [
+    {"id":"e72b232ba36cb2bbbd6565502abbffef","same_issue_as":"73bd6e16f400c78db20e71763293a737"},
+    {"id":"f8a330fb77c73b85a42d42e7928d489a","same_issue_as":"da703c336a247406f6fb9fba58e84c4e"}
+  ],
+  "hardening_or_deployment_dependent": [
+    {"id":"03a5c01ea544461c691258f4ae0843a0","reason":"Missing explicit workflow permissions is a hardening suggestion; effective defaults depend on repository/org settings. No proven excessive permission from YAML alone."},
+    {"id":"3ee810c757b673d27b6f43ad4c9b4d0d","reason":"COPY context can include sensitive files if they exist; this scan does not establish real credentials were included."},
+    {"id":"7c6bd62d7fda39a1f468569d5f497d32","reason":"Root runtime is a privilege/isolation hardening concern, not a standalone compromise entry."},
+    {"id":"7e6f1b95622f1081143b8163a81a3257","reason":"Vulnerable mode is the explicit purpose of this training image; do not count its existence as an unintended independent vulnerability."},
+    {"id":"a0e5e88ce0adf3e9f02f629838530fd7","reason":"Mutable action tags are a supply-chain hardening concern; action compromise not established."},
+    {"id":"ce9c41bd5153b10a8d52ca191ba0fd60","reason":"Hypothetical env-variant leakage without an actual committed secret file."},
+    {"id":"f849ef4057b9d8d2845b9d13076e4fca","reason":"Same build-context leakage concern as COPY finding; no actual secret-file inclusion proven."}
+  ],
+  "confirmed_false_positives": [
+    {"id":"3da44a758c46d60710eec9de100bea12","severity":"critical","category":"bug","reason":"Claim that docker/build-push-action@v3 requires checkout and defaults to local path is false. This workflow does not set context, so v3 uses Git context and does not need checkout.","source":"https://github.com/docker/build-push-action/tree/v3#git-context"},
+    {"id":"7decf0205a7dc8110390a31dd9ed7801","severity":"medium","category":"bug","reason":"Claim that file-backed SQLite SQLAlchemy QueuePool defaults to check_same_thread=True is false for pinned SQLAlchemy 2.0.2. Confirmed against the exact rel_2_0_2 source and official 2.0 documentation: file databases automatically disable the check.","source":"https://github.com/sqlalchemy/sqlalchemy/blob/rel_2_0_2/lib/sqlalchemy/dialects/sqlite/pysqlite.py"}
+  ],
+  "nonsecurity_findings_not_individually_validated": 29,
+  "classification_total": {"raw_findings":49,"security_category":18,"security_unique_static":9,"security_duplicates":2,"hardening_or_deployment_dependent":7,"confirmed_false_positives_nonsecurity":2,"remaining_nonsecurity":29},
+  "missed_cases": [
+    {"id":"VP02","reason":"No security finding identifies update_password's missing target-owner check; a JSON-null exception warning at that function does not count as a match."},
+    {"id":"VP06","reason":"No finding identifies distinct username/password failure responses in login_user."}
+  ],
+  "limits": "These counts are a scoped static assessment within a whole-repository run, not global precision across all findings or all possible vulnerabilities. Actual exploit execution was not performed. Debug exposure and training defaults are not claims about a production deployment."
+}

@@ -510,6 +510,31 @@ def test_comments_without_location_are_valid() -> None:
     assert comment.end_line is None
 
 
+def test_parse_envelope_preserves_finding_when_model_location_is_invalid() -> None:
+    envelope = json.loads(_envelope())
+    envelope["comments"] = [
+        {
+            "path": "src/auth.py",
+            "start_line": 0,
+            "end_line": 6,
+            "content": "Validate this input before using it.",
+        }
+    ]
+
+    status, comments, warnings, *_ = parse_ocr_envelope(envelope)
+
+    assert status is OCRStatus.PARTIAL
+    assert len(comments) == 1
+    assert comments[0].start_line is None
+    assert comments[0].end_line is None
+    assert warnings == (
+        {
+            "type": "invalid_location",
+            "message": "One or more OCR findings had an unusable source location; line numbers were omitted.",
+        },
+    )
+
+
 def test_nonzero_exit_is_failed_even_when_json_is_valid(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _patch_fake_popen(monkeypatch, _FakeProcess(_envelope(status="completed_with_warnings"), "fatal", returncode=1))
     result = OpenCodeReviewRunner().run(tmp_path)

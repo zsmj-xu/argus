@@ -9,6 +9,7 @@ from argus.service.integration import (
     OpenCodeReviewServiceRunner,
     RepositoryLimitError,
     _classify_git_failure,
+    _process_timeout_seconds,
     _safe_ocr_warning_categories,
 )
 from argus.service.models import ScanCreateRequest, ScanStatus
@@ -51,6 +52,14 @@ def test_structured_ocr_warning_categories_use_safe_fields() -> None:
     ) == ["budget", "timeout"]
 
 
+@pytest.mark.parametrize("value, expected", [(None, None), ("0", None), ("1800", 1800.0)])
+def test_process_deadline_is_opt_in(monkeypatch, value, expected) -> None:
+    monkeypatch.delenv("OCR_PROCESS_TIMEOUT_SECONDS", raising=False)
+    if value is not None:
+        monkeypatch.setenv("OCR_PROCESS_TIMEOUT_SECONDS", value)
+    assert _process_timeout_seconds() == expected
+
+
 def test_ocr_result_is_mapped_to_service_finding() -> None:
     store = ScanStore(":memory:")
     scan, _ = store.create_scan(ScanCreateRequest(repository_url="https://example.com/repo.git"))
@@ -66,7 +75,10 @@ def test_ocr_result_is_mapped_to_service_finding() -> None:
     assert result.findings[0].rule_id == "ocr/security"
     assert result.findings[0].start_line == 3
     assert result.findings[0].metadata["fingerprint"]
-    assert result.metadata["ocr_expected_deadline_seconds"] == 1800.0
+    assert result.metadata["ocr_expected_deadline_seconds"] is None
+    assert result.metadata["ocr_expected_deadline_at"] is None
+    assert fake_ocr.config is not None
+    assert fake_ocr.config.process_timeout_seconds is None
     assert result.metadata["ocr_engine"] == "opencodereview"
     assert result.metadata["ocr_output_language"] == "zh-CN"
     assert fake_ocr.config is not None
@@ -115,6 +127,28 @@ def test_service_runner_uses_v1_coverage_and_outcome_over_legacy_summary() -> No
     }
     assert result.metadata["ocr_warnings"] == ["engine_warning"]
     assert progress[0].total_files == 3
+
+
+def test_failed_ocr_without_coverage_does_not_report_zero_over_live_events() -> None:
+    class FailedOCR:
+        def run(self, *_args, **_kwargs) -> OCRRunResult:
+            return OCRRunResult(status=OCRStatus.FAILED, error="invalid OCR JSON output")
+
+    store = ScanStore(":memory:")
+    store.create_scan(ScanCreateRequest(repository_url="https://example.com/repo.git"))
+    claimed = store.claim_next("worker-1")
+    assert claimed is not None
+    progress: list[object] = []
+
+    result = OpenCodeReviewServiceRunner(FailedOCR(), token_budget=1000, timeout_minutes=2).run(
+        claimed,
+        Path("."),
+        progress.append,
+        lambda: False,
+    )
+
+    assert result.status is ScanStatus.FAILED
+    assert progress == []
 
 
 def test_service_runner_does_not_downgrade_v1_complete_for_warning() -> None:
@@ -363,6 +397,8 @@ def test_service_runner_forwards_and_sanitizes_future_engine_events() -> None:
         ("fatal: unable to access: Could not resolve host", "dns"),
         ("fatal: unable to access: Failed to connect", "connect"),
         ("SSL certificate problem: unable to get local issuer", "tls"),
+        ("gnutls_handshake() failed: Error in the pull function", "connect"),
+        ("fatal: unable to access: HTTP2 framing layer", "connect"),
         ("remote: Authentication failed", "auth"),
         ("remote: Repository not found", "repo_missing"),
         ("fatal: couldn't find remote ref missing", "ref_missing"),
@@ -385,6 +421,7 @@ def test_ocr_environment_does_not_forward_argus_api_key(monkeypatch, tmp_path) -
     monkeypatch.setenv("ARGUS_LLM_MODEL", "model")
     monkeypatch.setenv("ARGUS_DATA_DIR", str(tmp_path))
     runner = OpenCodeReviewServiceRunner.from_environment()
+    assert runner.timeout_minutes == 0
 
     environment = runner.runner.environment or {}
     assert "ARGUS_API_KEY" not in environment
@@ -404,3 +441,13 @@ def test_ocr_environment_opt_in_enables_structured_events_and_pinned_identity(mo
     assert runner.engine_commit == "a" * 40
     assert runner.runner.environment is not None
     assert runner.runner.environment["ARGUS_OCR_EVENT_PROTOCOL"] == "1"
+
+
+@pytest.mark.parametrize("setting, enabled", [(None, True), ("0", False)])
+def test_service_usage_events_default_on_with_explicit_disable(monkeypatch, tmp_path, setting, enabled):
+    monkeypatch.setenv("ARGUS_DATA_DIR", str(tmp_path))
+    monkeypatch.delenv("ARGUS_OCR_EVENT_PROTOCOL", raising=False)
+    if setting is not None:
+        monkeypatch.setenv("ARGUS_OCR_EVENT_PROTOCOL", setting)
+    runner = OpenCodeReviewServiceRunner.from_environment()
+    assert runner.event_protocol_enabled is enabled

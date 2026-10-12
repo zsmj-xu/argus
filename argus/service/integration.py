@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from contextlib import AbstractContextManager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 import hashlib
+import fnmatch
 import inspect
+import json
 import logging
 import math
 import os
@@ -23,6 +25,8 @@ from typing import Any, Callable
 
 from argus.ocr_adapter import OCRComment, OCRRunResult, OCRScanConfig, OCRStatus, OpenCodeReviewRunner
 from argus.repositories import normalize_git_url
+from .execution import execution_fds
+from .gitlab import gitlab_environment
 
 from .models import FindingCreate, ScanProgress, ScanStatus, ServiceScanResult
 from .observability import EVENT_DATA_WHITELIST
@@ -30,7 +34,7 @@ from .store import WorkerScan
 
 
 _COMMIT = re.compile(r"^[0-9a-fA-F]{40,64}$")
-_DEFAULT_OCR_COMMIT = "072808b6b0b12a1408b31889539c03878eff0f61"
+_DEFAULT_OCR_COMMIT = "16f10f1efeb69d6f3cd2391511e225ad54809e2e"
 _SIMPLIFIED_CHINESE_REVIEW_INSTRUCTION = (
     "输出要求：所有审查结论、问题说明和自然语言修复建议必须使用简体中文。"
     "源码、代码标识符、文件路径、规则分类和风险等级保持原样，不要翻译代码。"
@@ -77,6 +81,12 @@ _GIT_FAILURES = {
     ),
     "ref_missing": _GitFailure(
         "ref_missing", False, "verify the requested branch, tag, or commit", "Git ref was not found"
+    ),
+    "baseline_missing": _GitFailure(
+        "baseline_missing", False, "run a full scan", "Previous commit is unavailable; run a full scan"
+    ),
+    "baseline_diverged": _GitFailure(
+        "baseline_diverged", False, "run a full scan", "Branch history changed; run a full scan"
     ),
     "timeout": _GitFailure("timeout", True, "retry or increase the Git timeout", "Git repository operation timed out"),
     "cancel": _GitFailure("cancel", False, "the scan was canceled", "Git repository operation was canceled"),
@@ -128,7 +138,7 @@ class PreparedWorkspace(AbstractContextManager[Path]):
         return self.path
 
     def __exit__(self, *_args: object) -> None:
-        shutil.rmtree(self.path, ignore_errors=True)
+        shutil.rmtree(self.path)
 
 
 class GitWorkspaceProvider:
@@ -163,7 +173,11 @@ class GitWorkspaceProvider:
                 raise _repository_error("cancel")
             repository_url = normalize_git_url(scan.repository_url)
             target = scan.commit_sha or scan.ref
+            if shutil.disk_usage(self.root).free < self.max_bytes:
+                raise RepositoryLimitError("insufficient workspace disk space")
             clone_ref = None if target and _COMMIT.fullmatch(target) else target
+            if scan.project_id and not scan.commit_sha:
+                clone_ref = scan.ref
             clone_args = [
                 "-c",
                 "protocol.file.allow=never",
@@ -174,9 +188,19 @@ class GitWorkspaceProvider:
             ]
             if clone_ref:
                 clone_args.extend(["--branch", clone_ref])
+            if scan.project_id:
+                clone_args.append("--single-branch")
             clone_args.extend(["--", repository_url, str(path)])
             self._run_git(clone_args, cancel_check=should_cancel)
-            if target and _COMMIT.fullmatch(target):
+            if scan.project_id and clone_ref:
+                try:
+                    self._run_git(
+                        ["-C", str(path), "show-ref", "--verify", f"refs/remotes/origin/{clone_ref}"],
+                        cancel_check=should_cancel,
+                    )
+                except RepositoryFetchError as exc:
+                    raise _repository_error("ref_missing") from exc
+            if target and _COMMIT.fullmatch(target) and (scan.commit_sha or not scan.project_id):
                 self._run_git(
                     [
                         "-c",
@@ -203,6 +227,28 @@ class GitWorkspaceProvider:
                     ],
                     cancel_check=should_cancel,
                 )
+            if scan.base_commit:
+                try:
+                    self._run_git(
+                        ["-C", str(path), "fetch", "--unshallow", "--no-tags", "origin"], cancel_check=should_cancel
+                    )
+                    self._run_git(
+                        ["-C", str(path), "fetch", "--no-tags", "origin", scan.base_commit], cancel_check=should_cancel
+                    )
+                except RepositoryFetchError as exc:
+                    if exc.code in {"ref_missing", "unknown"}:
+                        raise _repository_error("baseline_missing") from exc
+                    raise
+                try:
+                    base = self._run_git(
+                        ["-C", str(path), "merge-base", scan.base_commit, "HEAD"],
+                        capture_output=True,
+                        cancel_check=should_cancel,
+                    ).stdout.strip()
+                except RepositoryFetchError as exc:
+                    raise _repository_error("baseline_diverged") from exc
+                if base != scan.base_commit:
+                    raise _repository_error("baseline_diverged")
             _emit_event(
                 event_callback,
                 type="phase",
@@ -300,6 +346,7 @@ class GitWorkspaceProvider:
         environment["GIT_TERMINAL_PROMPT"] = "0"
         environment["GIT_OPTIONAL_LOCKS"] = "0"
         environment["GIT_CONFIG_NOSYSTEM"] = "1"
+        environment.update(gitlab_environment())
         command = ["git", *args]
         process: subprocess.Popen[bytes] | None = None
         stdout_capture = _BoundedCapture(_MAX_GIT_CAPTURE_BYTES)
@@ -307,6 +354,8 @@ class GitWorkspaceProvider:
         readers: list[threading.Thread] = []
         timed_out = False
         canceled = False
+        limited = False
+        storage_checked_at = 0.0
         try:
             process = subprocess.Popen(
                 command,
@@ -315,6 +364,7 @@ class GitWorkspaceProvider:
                 stderr=subprocess.PIPE,
                 text=False,
                 start_new_session=True,
+                pass_fds=execution_fds(),
             )
             assert process.stdout is not None
             assert process.stderr is not None
@@ -324,6 +374,12 @@ class GitWorkspaceProvider:
             ]
             deadline = time.monotonic() + self.timeout_seconds
             while process.poll() is None:
+                if time.monotonic() - storage_checked_at >= 1:
+                    storage_checked_at = time.monotonic()
+                    if self._storage_exceeded():
+                        limited = True
+                        _terminate_git_process(process)
+                        break
                 if cancel_check is not None and cancel_check():
                     canceled = True
                     _terminate_git_process(process)
@@ -346,6 +402,10 @@ class GitWorkspaceProvider:
                 event_data["exit_code"] = process.returncode
             if canceled:
                 raise _repository_error("cancel", event_data=event_data)
+            if limited or self._storage_exceeded():
+                raise RepositoryLimitError("repository disk limit was exceeded")
+            if capture_output and stdout_capture.total_bytes > _MAX_GIT_CAPTURE_BYTES:
+                raise RepositoryLimitError("Git metadata output exceeds the safety limit")
             if timed_out:
                 raise _repository_error("timeout", event_data=event_data)
             if process.returncode != 0:
@@ -367,6 +427,20 @@ class GitWorkspaceProvider:
                     "timeout_seconds": self.timeout_seconds,
                 },
             )
+
+    def _storage_exceeded(self) -> bool:
+        if shutil.disk_usage(self.root).free < 64 * 1024 * 1024:
+            return True
+        used = 0
+        for directory, _, files in os.walk(self.root, followlinks=False):
+            for name in files:
+                try:
+                    used += (Path(directory) / name).lstat().st_size
+                except FileNotFoundError:
+                    continue
+                if used > self.max_bytes:
+                    return True
+        return False
 
 
 class _BoundedCapture:
@@ -476,12 +550,22 @@ def _classify_git_failure(diagnostic: str) -> _GitFailure:
             "ssl certificate problem",
             "certificate verify failed",
             "server certificate verification failed",
-            "gnutls_handshake",
-            "schannel",
-            "tls handshake",
-            " tls ",
         )
     ):
+        return _GIT_FAILURES["tls"]
+    if any(
+        marker in normalized
+        for marker in (
+            "gnutls_handshake",
+            "http2 framing layer",
+            "curl 56",
+            "recv failure",
+            "the remote end hung up unexpectedly",
+            "tls handshake",
+        )
+    ):
+        return _GIT_FAILURES["connect"]
+    if any(marker in normalized for marker in ("schannel", " tls ")):
         return _GIT_FAILURES["tls"]
     if any(
         marker in normalized
@@ -754,19 +838,18 @@ class OpenCodeReviewServiceRunner:
             environment["OCR_LLM_PROTOCOL"] = environment["ARGUS_LLM_PROTOCOL"]
         if not environment.get("OCR_LLM_PROTOCOL") and not environment.get("OCR_USE_ANTHROPIC"):
             environment["OCR_LLM_PROTOCOL"] = "openai"
-        event_protocol_enabled = environment.get("ARGUS_OCR_EVENT_PROTOCOL") == "1"
-        # The pipe/event protocol is deliberately opt-in.  Keep the child
-        # environment canonical so a future OCR runner cannot infer enablement
-        # from an arbitrary value.
+        event_protocol_enabled = environment.get("ARGUS_OCR_EVENT_PROTOCOL", "1") == "1"
+        # Enable the producer's optional event pipe by default in the service
+        # so interrupted scans retain provider-reported token usage.
         environment["ARGUS_OCR_EVENT_PROTOCOL"] = "1" if event_protocol_enabled else "0"
         ocr_home = Path(environment.get("ARGUS_DATA_DIR", "data")).resolve() / "ocr-home"
         ocr_home.mkdir(parents=True, exist_ok=True)
         environment["HOME"] = str(ocr_home)
         executable = environment.get("OCR_BINARY", "ocr")
-        token_budget = _positive_int(environment.get("OCR_MAX_TOKENS_BUDGET")) or 1_000_000
+        token_budget = 0
         timeout_minutes = _nonnegative_int(environment.get("OCR_TIMEOUT_MINUTES"))
         if timeout_minutes is None:
-            timeout_minutes = 30
+            timeout_minutes = 0
         engine_commit = _configured_engine_commit(environment)
         return cls(
             OpenCodeReviewRunner(
@@ -800,7 +883,9 @@ class OpenCodeReviewServiceRunner:
             return ServiceScanResult(status=ScanStatus.PARTIAL, error="ocr_canceled")
 
         timeout_seconds = _process_timeout_seconds()
-        expected_deadline = datetime.now(UTC) + timedelta(seconds=timeout_seconds)
+        expected_deadline = (
+            datetime.now(UTC) + timedelta(seconds=timeout_seconds) if timeout_seconds is not None else None
+        )
         engine_data = self._engine_data(timeout_seconds, expected_deadline=expected_deadline)
         _emit_event(
             event_callback,
@@ -830,6 +915,8 @@ class OpenCodeReviewServiceRunner:
             no_plan=True,
             no_dedup=True,
             no_summary=True,
+            base_commit=scan.base_commit,
+            target_commit=scan.commit_sha if scan.base_commit else None,
         )
         started = time.monotonic()
         result = self._run_engine(workspace, config, should_cancel, event_callback)
@@ -901,15 +988,19 @@ class OpenCodeReviewServiceRunner:
         # establish how much unreviewed work remains.  Legacy counters use 0
         # for unknown totals; the observation API exposes null explicitly.
         legacy_total = total if total is not None else 0
-        progress(
-            ScanProgress(
-                total_files=legacy_total,
-                reviewed_files=reviewed,
-                failed_files=failed,
-                skipped_files=skipped,
-                percent=_coverage_percent(legacy_total, reviewed, failed, skipped),
+        # A malformed/empty terminal envelope has no authoritative final
+        # coverage.  Do not overwrite the structured file-level coverage that
+        # the worker already projected while OCR was running with 0/0.
+        if not (ocr_status is OCRStatus.FAILED and scan_result is None and total is None):
+            progress(
+                ScanProgress(
+                    total_files=legacy_total,
+                    reviewed_files=reviewed,
+                    failed_files=failed,
+                    skipped_files=skipped,
+                    percent=_coverage_percent(legacy_total, reviewed, failed, skipped),
+                )
             )
-        )
         llm = _safe_ocr_llm(result.llm)
         session_id = _safe_identifier(result.session_id)
         metadata = {
@@ -935,7 +1026,7 @@ class OpenCodeReviewServiceRunner:
             "ocr_duration_ms": duration_ms,
             "ocr_timeout_seconds": timeout_seconds,
             "ocr_expected_deadline_seconds": timeout_seconds,
-            "ocr_expected_deadline_at": expected_deadline.isoformat(),
+            "ocr_expected_deadline_at": expected_deadline.isoformat() if expected_deadline is not None else None,
             "ocr_engine": "opencodereview",
             "ocr_engine_commit": self.engine_commit,
             "ocr_output_language": "zh-CN",
@@ -950,6 +1041,7 @@ class OpenCodeReviewServiceRunner:
         }[ocr_status]
         return ServiceScanResult(
             status=status,
+            commit_sha=scan.commit_sha,
             findings=comments,
             session_id=session_id,
             total_files=legacy_total,
@@ -972,10 +1064,66 @@ class OpenCodeReviewServiceRunner:
             # OCR writes native session transcripts under HOME. Keep those
             # per attempt and ephemeral; only normalized findings and safe
             # events are retained by Argus.
-            with tempfile.TemporaryDirectory(prefix="argus-ocr-home-") as home_dir:
+            with tempfile.TemporaryDirectory(
+                prefix=f"{workspace.name[:32]}-ocr-home-", dir=workspace.parent
+            ) as home_dir:
                 environment = dict(self.runner.environment or os.environ)
                 environment["HOME"] = home_dir
                 environment["XDG_CONFIG_HOME"] = str(Path(home_dir) / ".config")
+                for key in (
+                    "ARGUS_GITLAB_TOKEN",
+                    "ARGUS_GITLAB_TOKEN_FILE",
+                    "ARGUS_GITLAB_USERNAME",
+                    "ARGUS_GITLAB_HOST",
+                    "ARGUS_GITLAB_HELPER",
+                    "GIT_CONFIG_GLOBAL",
+                    "GIT_CONFIG_SYSTEM",
+                    "SSH_AUTH_SOCK",
+                    "GIT_SSH_COMMAND",
+                ):
+                    environment.pop(key, None)
+                if config.base_commit:
+                    rule = Path(home_dir) / "argus-rule.json"
+                    excludes = list(config.excludes)
+                    if config.paths:
+                        changed = (
+                            subprocess.run(
+                                [
+                                    "git",
+                                    "-C",
+                                    str(workspace),
+                                    "diff",
+                                    "--no-ext-diff",
+                                    "--no-textconv",
+                                    "--name-only",
+                                    "-z",
+                                    config.base_commit,
+                                    config.target_commit or "",
+                                    "--",
+                                ],
+                                env={"PATH": environment.get("PATH", os.defpath), "GIT_CONFIG_NOSYSTEM": "1"},
+                                capture_output=True,
+                                timeout=60,
+                                check=True,
+                            )
+                            .stdout.decode("utf-8", errors="strict")
+                            .split("\x00")
+                        )
+                        for path in changed:
+                            if path and not any(
+                                path == prefix
+                                or path.startswith(prefix.rstrip("/") + "/")
+                                or fnmatch.fnmatchcase(path, prefix)
+                                for prefix in config.paths
+                            ):
+                                escaped = "".join({"[": "[[]", "*": "[*]", "?": "[?]"}.get(c, c) for c in path)
+                                excludes.append(escaped)
+                    # Trusted service-generated filters, never repository-provided rules.
+                    rule.write_text(
+                        json.dumps({"rules": [], "include": list(config.paths), "exclude": excludes}),
+                        encoding="utf-8",
+                    )
+                    config = replace(config, rule_file=str(rule))
                 scoped = OpenCodeReviewRunner(
                     self.runner.executable,
                     environment=environment,
@@ -991,10 +1139,10 @@ class OpenCodeReviewServiceRunner:
             )
         return self.runner.run(workspace, config, cancel_check=should_cancel)
 
-    def _engine_data(self, timeout_seconds: float, *, expected_deadline: datetime) -> dict[str, object]:
+    def _engine_data(self, timeout_seconds: float | None, *, expected_deadline: datetime | None) -> dict[str, object]:
         data: dict[str, object] = {
             "timeout_seconds": timeout_seconds,
-            "deadline_at": expected_deadline.isoformat(),
+            "deadline_at": expected_deadline.isoformat() if expected_deadline is not None else None,
             "engine_commit": self.engine_commit,
             "event_protocol": self.event_protocol_enabled,
             "capabilities": {
@@ -1102,7 +1250,7 @@ def _forward_engine_event(callback: EventCallback | None) -> Callable[[object], 
     return forward
 
 
-def _result_event_data(result: OCRRunResult, *, duration_ms: int, timeout_seconds: float) -> dict[str, object]:
+def _result_event_data(result: OCRRunResult, *, duration_ms: int, timeout_seconds: float | None) -> dict[str, object]:
     data: dict[str, object] = {
         "stdout_bytes": _byte_length(getattr(result, "stdout", "")),
         "stderr_bytes": _byte_length(getattr(result, "stderr", "")),
@@ -1177,7 +1325,7 @@ def _warning_category(value: object) -> str:
         return "auth"
     if "429" in text or "rate limit" in text or "rate_limit" in text:
         return "rate_limit"
-    if "json" in text or "schema" in text or "parse" in text or "output" in text:
+    if "json" in text or "schema" in text or "parse" in text or "output" in text or "invalid_location" in text:
         return "invalid_output"
     if "file" in text or "path" in text or "read" in text:
         return "source_read"
@@ -1262,10 +1410,10 @@ def _safe_ocr_llm(value: object) -> dict[str, str]:
     return result
 
 
-def _process_timeout_seconds() -> float:
-    value = os.getenv("OCR_PROCESS_TIMEOUT_SECONDS", "1800")
+def _process_timeout_seconds() -> float | None:
+    value = os.getenv("OCR_PROCESS_TIMEOUT_SECONDS", "0")
     try:
         parsed = float(value)
     except ValueError:
-        return 1800.0
-    return parsed if parsed > 0 else 1800.0
+        return None
+    return parsed if math.isfinite(parsed) and parsed > 0 else None

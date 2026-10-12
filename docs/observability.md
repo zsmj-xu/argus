@@ -8,7 +8,7 @@ Argus 是仓库级 white-box review 服务，OpenCodeReview 是唯一的源码�
 可用；它不增加第二个分析器，也不把静态 finding 说成动态确认的漏洞。
 
 默认镜像使用固定 fork commit 构建的 OpenCodeReview binary；该 binary 支持事件
-协议，但部署默认通过 `ARGUS_OCR_EVENT_PROTOCOL=0` 保持关闭。独立 OCR NDJSON pipe 见
+协议，部署默认通过 `ARGUS_OCR_EVENT_PROTOCOL=1` 启用用量事件。独立 OCR NDJSON pipe 见
 [OCR events v1](ocr-events-v1.md)。
 
 每次真实 OCR 调用使用独立临时 HOME，结束或失败后清理引擎原生会话正文。
@@ -230,7 +230,7 @@ queued -> git_fetching -> source_checking -> ocr_starting
 `file_progress`、`llm_requests`、`event_protocol` 只按正面事实置 true；provider
 `/models` 的 `200` 只证明该 HTTP 路由回答，不证明 generation 或 scan 成功。
 
-## 120/300 秒警告与 30 分钟截止
+## 120/300 秒警告与可选执行时限
 
 当前默认值为：
 
@@ -239,10 +239,10 @@ queued -> git_fetching -> source_checking -> ocr_starting
 - `ARGUS_ACTIVITY_STALE_SECONDS=300`：连续 300 秒没有 output/progress 时，
   `activity_state=stale_warning`；
 - 两者都是诊断警告，不转成 `failed`、不自动取消、不制造进度；
-- `OCR_PROCESS_TIMEOUT_SECONDS=1800` 是 outer OCR subprocess 的 30 分钟硬截止，
-  会产生 `ocr.timeout` 并走失败路径；
-- `OCR_TIMEOUT_MINUTES=30` 是传给 OCR 的每文件 `--timeout`；worker lease 默认
-  300 秒是 fencing/recovery，不等同于 30 分钟 OCR 截止；
+- `OCR_PROCESS_TIMEOUT_SECONDS=0` 默认不设 outer OCR subprocess 截止；正数才
+  启用对应秒数的硬截止，产生 `ocr.timeout` 并走失败路径；
+- `OCR_TIMEOUT_MINUTES=0` 默认不设每文件时限；正数才启用 OCR 每文件 `--timeout`；
+  worker lease 默认 300 秒是 fencing/recovery，不是扫描执行截止；
 - `observation.deadline_at` 在 OCR starting event 带有 timeout 时表示计算出的
   outer process deadline；没有该事实时保持 `null`，不是 ETA。
 

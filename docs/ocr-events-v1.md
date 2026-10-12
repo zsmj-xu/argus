@@ -1,8 +1,8 @@
 # OCR events v1：独立 OCR 的可选 NDJSON
 
 这是 Argus 固定 OpenCodeReview fork commit 实现的 opt-in 事件协议。Argus 的产品
-仍只有一个源码审查引擎：OpenCodeReview。镜像内的 binary 支持该协议，但部署默认
-保持 `ARGUS_OCR_EVENT_PROTOCOL=0`；最终 stdout JSON 与进程退出状态仍是唯一的
+仍只有一个源码审查引擎：OpenCodeReview。镜像内的 binary 支持该协议，Argus 部署默认
+启用 `ARGUS_OCR_EVENT_PROTOCOL=1`，用于保留失败任务的用量；最终 stdout JSON 与进程退出状态仍是唯一的
 OCR 结果合同。
 
 ## 开关和进程边界
@@ -154,8 +154,9 @@ warning-bearing partial、skipped 和 failed/error aliases 按现有 parser 处�
 非零退出、无法解析最终 JSON、outer timeout、cancel、reader/output limit 都不能
 被 v1 事件补成成功。
 
-默认外层 `OCR_PROCESS_TIMEOUT_SECONDS=1800`（30 分钟），`OCR_TIMEOUT_MINUTES=30`
-是每文件 `--timeout`。stdout/stderr 进程 buffer 也有 8 MiB 上限；这与服务事件
+默认外层 `OCR_PROCESS_TIMEOUT_SECONDS=0`、每文件 `OCR_TIMEOUT_MINUTES=0`，均不设
+执行时限；正数可显式启用对应时限。stdout 结果 buffer 上限为 64 MiB，stderr 诊断 buffer
+上限为 8 MiB；这与服务事件
 单条 8 KiB 限制不同。当前固定 binary 不会因为没有 event FD 而失败。
 
 ## 安全、保留与验收
@@ -177,3 +178,16 @@ stdout 决定；协议关闭时验证默认 pinned binary 路径和无 inherited
 
 历史 `fbd...` 只证明曾在 30 分钟后超时，不能证明 pipe 是根因。pipe deadlock
 是此次已修复的历史缺陷记录，不应再次归因给新的历史 incident。
+
+## Token 用量事件
+
+OCR `scan` 和 `review` 发送 `usage.updated`，仅携带累计数字：input/output/total_tokens、
+cache_read/cache_write_tokens、requests、missing_usage_requests。Argus 按执行 attempt 保存
+快照，重复或乱序事件不重复累计；同任务不同 attempt 的已知用量相加。事件历史容量耗尽后
+仍更新用量快照。失败、取消和进程中断保留已提交的记录；最终 JSON 用量替换该 attempt 的
+中间快照，不再相加。累计值保存在 metadata.ocr_usage，按 attempt 的事实保存在
+metadata.ocr_usage_attempts。未知值保持未知，不用 0 代替。
+
+页面区分“最终已报告用量”与“已记录，可能不完整”。后者是已收到的模型用量下界；中断前
+没有收到 usage 的请求、供应商内部重试或最后事件丢失可能导致漏记，不保证与网关账单一致。
+cache_read 属于 input，不能再加到 total。历史失败任务没有这些事件，无法补造准确用量。
